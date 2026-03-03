@@ -334,10 +334,15 @@ class AIService:
     def get_provider_status(self):
         """Return provider configuration for UI/debug"""
         chain = self._build_provider_chain() if self.configured_providers else []
+        missing_providers = [
+            provider for provider in ['openai', 'mistral', 'claude', 'gemini']
+            if provider not in self.configured_providers
+        ]
         return {
             "primary_provider": self.primary_provider,
             "provider_order": self.provider_order,
             "configured_providers": self.configured_providers,
+            "missing_providers": missing_providers,
             "active_chain": chain,
             "task_provider_overrides": self.task_provider_overrides,
             "task_chains": {
@@ -348,7 +353,13 @@ class AIService:
             },
             "last_provider_used": self.last_provider_used,
             "provider_usage": self.provider_usage,
-            "demo_mode": len(self.configured_providers) == 0
+            "demo_mode": len(self.configured_providers) == 0,
+            "expected_env": {
+                "openai": ["OPENAI_API_KEY", "OPENAI_KEY"],
+                "mistral": ["MISTRAL_API_KEY", "MISTRAL_KEY"],
+                "claude": ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY"],
+                "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+            }
         }
     
     def _get_demo_response(self, messages):

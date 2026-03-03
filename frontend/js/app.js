@@ -282,6 +282,9 @@ async function sendMessage() {
         
         if (data.success) {
             addMessage(data.response, 'assistant');
+            if (data.demo_mode) {
+                showNotification('⚠️ Đang dùng Demo Mode (chưa có AI key trên server).', 'info');
+            }
         } else {
             addMessage('Xảy ra lỗi: ' + (data.error || 'Unknown error'), 'assistant');
         }
@@ -323,7 +326,15 @@ async function gmailLogin() {
         const data = await response.json();
 
         if (!response.ok || !data.auth_url) {
-            alert('Chưa thể đăng nhập Gmail: ' + (data.error || 'OAuth chưa được cấu hình trên server.'));
+            let detail = data.error || 'OAuth chưa được cấu hình trên server.';
+            try {
+                const statusResp = await apiFetch(`${API_BASE}/status`);
+                const status = await statusResp.json();
+                if (status && !status.gmail_configured) {
+                    detail += '\n\nThiếu cấu hình Gmail trên Vercel. Hãy set:\n- GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET\nhoặc\n- GMAIL_CREDENTIALS_JSON (toàn bộ JSON OAuth)';
+                }
+            } catch {}
+            alert('Chưa thể đăng nhập Gmail: ' + detail);
             return;
         }
 
@@ -348,11 +359,13 @@ async function checkRuntimeConfig() {
         const demoMode = !!providersData?.providers?.demo_mode;
 
         if (demoMode || providers.length === 0) {
-            showNotification('⚠️ Chat đang ở Demo Mode. Hãy thêm API key AI trên Vercel.', 'info');
+            const missingProviders = providersData?.providers?.missing_providers || [];
+            const hint = missingProviders.length > 0 ? ` Thiếu: ${missingProviders.join(', ')}.` : '';
+            showNotification(`⚠️ Chat đang ở Demo Mode.${hint}`, 'info');
         }
 
         if (statusData && statusData.gmail_configured === false) {
-            showNotification('⚠️ Gmail OAuth chưa cấu hình. Thiếu GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET.', 'info');
+            showNotification('⚠️ Gmail OAuth chưa cấu hình. Set GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET hoặc GMAIL_CREDENTIALS_JSON.', 'info');
         }
     } catch (error) {
         console.error('Runtime config check failed:', error);

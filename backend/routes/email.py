@@ -3,6 +3,7 @@ import os
 import sys
 import pickle
 import json
+import base64
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -106,16 +107,43 @@ def _build_oauth_flow(state=None):
 
     raw_credentials_json = (Config.GMAIL_CREDENTIALS_JSON or '').strip()
     if raw_credentials_json:
+        candidates = [raw_credentials_json]
+
+        # Remove wrapping quotes if env was pasted as a quoted JSON string
+        if (raw_credentials_json.startswith('"') and raw_credentials_json.endswith('"')) or (
+            raw_credentials_json.startswith("'") and raw_credentials_json.endswith("'")
+        ):
+            candidates.append(raw_credentials_json[1:-1])
+
+        # Try base64-decoded variant as well
         try:
-            parsed = json.loads(raw_credentials_json)
-            return Flow.from_client_config(
-                parsed,
-                scopes=GmailService.SCOPES,
-                state=state,
-                redirect_uri=redirect_uri
-            )
+            decoded = base64.b64decode(raw_credentials_json).decode('utf-8')
+            if decoded:
+                candidates.append(decoded)
         except Exception:
             pass
+
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict) and 'installed' in parsed and 'web' not in parsed:
+                    parsed = {'web': parsed.get('installed', {})}
+
+                if isinstance(parsed, dict) and 'web' in parsed:
+                    web_cfg = parsed.get('web') or {}
+                    redirect_uris = web_cfg.get('redirect_uris') or []
+                    if redirect_uri and redirect_uri not in redirect_uris:
+                        web_cfg['redirect_uris'] = redirect_uris + [redirect_uri]
+                    parsed['web'] = web_cfg
+
+                return Flow.from_client_config(
+                    parsed,
+                    scopes=GmailService.SCOPES,
+                    state=state,
+                    redirect_uri=redirect_uri
+                )
+            except Exception:
+                continue
 
     client_id = (Config.GMAIL_CLIENT_ID or '').strip()
     client_secret = (Config.GMAIL_CLIENT_SECRET or '').strip()

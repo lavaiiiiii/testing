@@ -63,16 +63,27 @@ def health_check():
 def get_status():
     """Get system status"""
     gmail_from_env = bool(Config.GMAIL_CLIENT_ID and Config.GMAIL_CLIENT_SECRET)
+    gmail_from_json = bool(Config.GMAIL_CREDENTIALS_JSON)
     gmail_from_file = os.path.exists(Config.GMAIL_CREDENTIALS_FILE)
+
+    ai_map = {
+        'openai': bool(Config.OPENAI_API_KEY),
+        'mistral': bool(Config.MISTRAL_API_KEY),
+        'claude': bool(Config.CLAUDE_API_KEY),
+        'gemini': bool(Config.GEMINI_API_KEY)
+    }
+    missing_ai = [name for name, ok in ai_map.items() if not ok]
 
     return jsonify({
         'status': 'running',
-        'openai_configured': bool(Config.OPENAI_API_KEY),
-        'mistral_configured': bool(Config.MISTRAL_API_KEY),
-        'claude_configured': bool(Config.CLAUDE_API_KEY),
-        'gemini_configured': bool(Config.GEMINI_API_KEY),
-        'gmail_configured': gmail_from_env or gmail_from_file,
-        'gmail_config_source': 'env' if gmail_from_env else ('file' if gmail_from_file else 'missing')
+        'openai_configured': ai_map['openai'],
+        'mistral_configured': ai_map['mistral'],
+        'claude_configured': ai_map['claude'],
+        'gemini_configured': ai_map['gemini'],
+        'ai_providers_configured': [name for name, ok in ai_map.items() if ok],
+        'ai_missing_providers': missing_ai,
+        'gmail_configured': gmail_from_env or gmail_from_json or gmail_from_file,
+        'gmail_config_source': 'env' if gmail_from_env else ('env_json' if gmail_from_json else ('file' if gmail_from_file else 'missing'))
     })
 
 if __name__ == '__main__':

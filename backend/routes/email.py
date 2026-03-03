@@ -175,8 +175,21 @@ def _build_oauth_flow(state=None):
 
     raise RuntimeError(
         'Gmail OAuth chưa được cấu hình. Vui lòng set GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET '
-        'trên Vercel hoặc cung cấp data/gmail_credentials.json.'
+        'hoặc GMAIL_CREDENTIALS_JSON trên Vercel.'
     )
+
+
+@email_bp.route('/oauth-config-check', methods=['GET'])
+def oauth_config_check():
+    """Safe diagnostics for OAuth configuration (no secret values)."""
+    return jsonify({
+        'success': True,
+        'has_client_id': bool((Config.GMAIL_CLIENT_ID or '').strip()),
+        'has_client_secret': bool((Config.GMAIL_CLIENT_SECRET or '').strip()),
+        'has_credentials_json': bool((Config.GMAIL_CREDENTIALS_JSON or '').strip()),
+        'has_credentials_file': os.path.exists(Config.GMAIL_CREDENTIALS_FILE),
+        'redirect_uri_preview': _get_redirect_uri()
+    })
 
 
 @email_bp.route('/get-unread', methods=['GET'])

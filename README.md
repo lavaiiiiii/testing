@@ -18,6 +18,21 @@ Một ứng dụng chatbox AI đơn giản giúp giáo viên quản lý email, l
 
 ## Cài Đặt
 
+## Chạy local nhanh (khuyến nghị)
+
+Trên Windows PowerShell, từ thư mục project:
+
+```powershell
+./run_local.ps1
+```
+
+Script sẽ:
+- kiểm tra `.env`
+- kiểm tra `data/gmail_credentials.json`
+- tự chọn Python từ virtualenv nếu có
+- cài dependencies còn thiếu
+- chạy server tại `http://localhost:5000`
+
 ### 1. Clone hoặc Extract Project
 
 ```bash

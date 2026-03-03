@@ -17,9 +17,11 @@ ai_service = AIService()
 @chat_bp.route('/message', methods=['POST'])
 def send_message():
     """Send message to AI assistant"""
-    data = request.get_json()
+    data = request.get_json() or {}
     user_message = data.get('message', '').strip()
-    task = data.get('task', 'chat')
+    task = (data.get('task', 'chat') or 'chat').strip().lower()
+    if task not in ['chat', 'summary', 'reply', 'analyze']:
+        task = 'chat'
     
     if not user_message:
         return jsonify({'error': 'Empty message'}), 400
@@ -29,17 +31,30 @@ def send_message():
     History.init_db(db_path=db_path)
     Schedule.init_db(db_path=db_path)
 
-    # Build messages for AI
+    # Build messages for AI with recent chat context for smarter responses
     messages = [
         {
             "role": "system",
             "content": "Bạn là TeacherBot, trợ lý giáo viên. Trả lời ngắn gọn, chuyên nghiệp, hữu ích về email, lịch hẹn và công việc giảng dạy."
-        },
-        {
-            "role": "user",
-            "content": user_message
         }
     ]
+
+    recent_history = History.get_recent(limit=8, db_path=db_path)
+    for record in reversed(recent_history):
+        if record.get('action_type') != 'chat':
+            continue
+
+        prev_user = (record.get('user_message') or '').strip()
+        prev_assistant = (record.get('assistant_response') or '').strip()
+        if prev_user:
+            messages.append({"role": "user", "content": prev_user})
+        if prev_assistant:
+            messages.append({"role": "assistant", "content": prev_assistant})
+
+    messages.append({
+        "role": "user",
+        "content": user_message
+    })
     
     # Generate response
     response = ai_service.generate_response(messages, task=task)
@@ -49,7 +64,9 @@ def send_message():
     
     return jsonify({
         'success': True,
-        'response': response
+        'response': response,
+        'provider': ai_service.last_provider_used,
+        'demo_mode': ai_service.last_provider_used == 'demo'
     })
 
 @chat_bp.route('/summarize-email', methods=['POST'])

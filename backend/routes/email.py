@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, redirect, url_for, session
 import os
 import sys
 import pickle
+import json
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -102,6 +103,19 @@ def _get_redirect_uri():
 def _build_oauth_flow(state=None):
     """Create OAuth flow from env vars (preferred) or credentials file."""
     redirect_uri = _get_redirect_uri()
+
+    raw_credentials_json = (Config.GMAIL_CREDENTIALS_JSON or '').strip()
+    if raw_credentials_json:
+        try:
+            parsed = json.loads(raw_credentials_json)
+            return Flow.from_client_config(
+                parsed,
+                scopes=GmailService.SCOPES,
+                state=state,
+                redirect_uri=redirect_uri
+            )
+        except Exception:
+            pass
 
     client_id = (Config.GMAIL_CLIENT_ID or '').strip()
     client_secret = (Config.GMAIL_CLIENT_SECRET or '').strip()

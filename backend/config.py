@@ -3,6 +3,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _first_env(*names):
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and str(value).strip() != '':
+            return value
+    return None
+
 BASE_DIR = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..'))
 IS_VERCEL = bool(os.getenv('VERCEL'))
@@ -18,19 +26,19 @@ class Config:
     DATABASE_PATH = os.path.join(DATA_DIR, 'assistant.db')
     
     # OpenAI config
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    OPENAI_API_KEY = _first_env('OPENAI_API_KEY', 'OPENAI_KEY')
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
     
     # Mistral AI config
-    MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
+    MISTRAL_API_KEY = _first_env('MISTRAL_API_KEY', 'MISTRAL_KEY')
     MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistral-small')
 
     # Claude (Anthropic) config
-    CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+    CLAUDE_API_KEY = _first_env('CLAUDE_API_KEY', 'ANTHROPIC_API_KEY')
     CLAUDE_MODEL = os.getenv('CLAUDE_MODEL', 'claude-3-5-haiku-latest')
 
     # Gemini config
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    GEMINI_API_KEY = _first_env('GEMINI_API_KEY', 'GOOGLE_API_KEY')
     GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
 
     # Multi-provider orchestration
@@ -57,8 +65,9 @@ class Config:
     AI_TASK_PROVIDERS_ANALYZE = os.getenv('AI_TASK_PROVIDERS_ANALYZE', '')
     
     # Gmail config
-    GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
-    GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
+    GMAIL_CLIENT_ID = _first_env('GMAIL_CLIENT_ID', 'GOOGLE_CLIENT_ID')
+    GMAIL_CLIENT_SECRET = _first_env('GMAIL_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET')
+    GMAIL_CREDENTIALS_JSON = _first_env('GMAIL_CREDENTIALS_JSON', 'GOOGLE_OAUTH_CLIENT_JSON')
     GMAIL_CREDENTIALS_FILE = os.path.join(PROJECT_DATA_DIR, 'gmail_credentials.json')
     GMAIL_TOKEN_FILE = os.path.join(DATA_DIR, 'gmail_token.pickle')
     # Optional: set this to the redirect URI registered in Google Cloud Console

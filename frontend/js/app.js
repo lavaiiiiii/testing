@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = '/api';
 
 // DOM Elements
 const chatMessages = document.getElementById('chatMessages');
@@ -35,7 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function apiFetch(url, options = {}) {
-    return fetch(url, options);
+    return fetch(url, {
+        credentials: 'include',
+        ...options
+    });
 }
 
 function checkOAuthCallback() {

@@ -99,6 +99,44 @@ def _get_redirect_uri():
     return url_for('email.oauth2callback', _external=True)
 
 
+def _build_oauth_flow(state=None):
+    """Create OAuth flow from env vars (preferred) or credentials file."""
+    redirect_uri = _get_redirect_uri()
+
+    client_id = (Config.GMAIL_CLIENT_ID or '').strip()
+    client_secret = (Config.GMAIL_CLIENT_SECRET or '').strip()
+    if client_id and client_secret:
+        client_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "redirect_uris": [redirect_uri]
+            }
+        }
+        return Flow.from_client_config(
+            client_config,
+            scopes=GmailService.SCOPES,
+            state=state,
+            redirect_uri=redirect_uri
+        )
+
+    if os.path.exists(Config.GMAIL_CREDENTIALS_FILE):
+        return Flow.from_client_secrets_file(
+            Config.GMAIL_CREDENTIALS_FILE,
+            scopes=GmailService.SCOPES,
+            state=state,
+            redirect_uri=redirect_uri
+        )
+
+    raise RuntimeError(
+        'Gmail OAuth chưa được cấu hình. Vui lòng set GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET '
+        'trên Vercel hoặc cung cấp data/gmail_credentials.json.'
+    )
+
+
 @email_bp.route('/get-unread', methods=['GET'])
 def get_unread_emails():
     """Get unread emails filtered by selected category using AI classifier."""
@@ -260,11 +298,11 @@ def summarize_emails_by_date():
 @email_bp.route('/auth', methods=['GET'])
 def gmail_auth():
     """Initiate OAuth2 login flow."""
-    flow = Flow.from_client_secrets_file(
-        Config.GMAIL_CREDENTIALS_FILE,
-        scopes=GmailService.SCOPES,
-        redirect_uri=_get_redirect_uri()
-    )
+    try:
+        flow = _build_oauth_flow()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 503
+
     auth_url, state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
@@ -292,12 +330,10 @@ def oauth2callback():
     if not state:
         return jsonify({'error': 'flow_not_initialized'}), 400
 
-    flow = Flow.from_client_secrets_file(
-        Config.GMAIL_CREDENTIALS_FILE,
-        scopes=GmailService.SCOPES,
-        state=state,
-        redirect_uri=_get_redirect_uri()
-    )
+    try:
+        flow = _build_oauth_flow(state=state)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 503
     # restore PKCE code_verifier from session if present
     code_verifier = session.pop('oauth_code_verifier', None)
     try:
@@ -349,11 +385,11 @@ def oauth2callback():
 @email_bp.route('/auth_url', methods=['GET'])
 def gmail_auth_url():
     """Return the OAuth authorization URL (JSON) so frontend can redirect."""
-    flow = Flow.from_client_secrets_file(
-        Config.GMAIL_CREDENTIALS_FILE,
-        scopes=GmailService.SCOPES,
-        redirect_uri=_get_redirect_uri()
-    )
+    try:
+        flow = _build_oauth_flow()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 503
+
     auth_url, state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',

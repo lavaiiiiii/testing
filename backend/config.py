@@ -7,6 +7,7 @@ BASE_DIR = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..'))
 IS_VERCEL = bool(os.getenv('VERCEL'))
 DATA_DIR = os.path.join('/tmp', 'teacher-ai-assistant-data') if IS_VERCEL else os.path.join(PROJECT_ROOT, 'data')
+PROJECT_DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
 class Config:
     # Flask config
@@ -58,7 +59,7 @@ class Config:
     # Gmail config
     GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
     GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
-    GMAIL_CREDENTIALS_FILE = os.path.join(DATA_DIR, 'gmail_credentials.json')
+    GMAIL_CREDENTIALS_FILE = os.path.join(PROJECT_DATA_DIR, 'gmail_credentials.json')
     GMAIL_TOKEN_FILE = os.path.join(DATA_DIR, 'gmail_token.pickle')
     # Optional: set this to the redirect URI registered in Google Cloud Console
     # e.g. 'http://localhost:5000/api/email/oauth2callback'

@@ -83,10 +83,19 @@ def _clear_oauth_state(user_id):
 
 def _get_redirect_uri():
     """Return configured redirect URI or build from request."""
-    # Allow explicit override via environment (useful to match Google Console)
-    if getattr(Config, 'GMAIL_REDIRECT_URI', None):
-        return Config.GMAIL_REDIRECT_URI
-    # Fallback to default generated URL
+    configured = (getattr(Config, 'GMAIL_REDIRECT_URI', None) or '').strip()
+    if configured:
+        # Prevent localhost redirect leak when running on Vercel
+        if not (os.getenv('VERCEL') and 'localhost' in configured.lower()):
+            return configured
+
+    # Prefer forwarded host/proto from reverse proxy (Vercel)
+    forwarded_host = request.headers.get('x-forwarded-host', '').strip()
+    forwarded_proto = request.headers.get('x-forwarded-proto', '').strip() or 'https'
+    if forwarded_host:
+        return f"{forwarded_proto}://{forwarded_host}/api/email/oauth2callback"
+
+    # Fallback to Flask-generated URL
     return url_for('email.oauth2callback', _external=True)
 
 

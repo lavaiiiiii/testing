@@ -1,5 +1,6 @@
 from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
 
@@ -19,6 +20,7 @@ from routes.schedule import schedule_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 # Allow CORS with credentials for the frontend origin(s) so session cookies are preserved
 allowed_origins = [
     "http://localhost:5000",

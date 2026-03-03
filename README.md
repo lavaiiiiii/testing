@@ -98,6 +98,19 @@ pip install -r ../requirements.txt
    GMAIL_CLIENT_SECRET=your-client-secret
    ```
 
+### Cấu hình trên Vercel (quan trọng)
+
+Vercel **không tự đọc file `.env` trong repo**. Bạn phải vào **Project Settings → Environment Variables** để set biến môi trường.
+
+Tối thiểu cần:
+- Ít nhất 1 AI key để chat không rơi vào demo mode: `OPENAI_API_KEY` (hoặc Mistral/Claude/Gemini)
+- Gmail OAuth: `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET`
+   - Hoặc dùng `GMAIL_CREDENTIALS_JSON` (toàn bộ JSON OAuth client)
+- `SECRET_KEY`
+
+Redirect URI trong Google Cloud Console:
+- `https://<your-vercel-domain>/api/email/oauth2callback`
+
 ### 6. Chạy Ứng Dụng
 
 ```bash

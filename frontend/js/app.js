@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadChatHistory();
     checkOAuthCallback();
     refreshAuthButtons();
+    checkRuntimeConfig();
 });
 
 async function apiFetch(url, options = {}) {
@@ -318,11 +319,43 @@ async function loadChatHistory() {
 // Email Functions
 async function gmailLogin() {
     try {
-        // Directly redirect to /auth endpoint (Flask handles OAuth flow and session)
-        window.location.href = `${API_BASE}/email/auth`;
+        const response = await apiFetch(`${API_BASE}/email/auth_url`);
+        const data = await response.json();
+
+        if (!response.ok || !data.auth_url) {
+            alert('Chưa thể đăng nhập Gmail: ' + (data.error || 'OAuth chưa được cấu hình trên server.'));
+            return;
+        }
+
+        window.location.href = data.auth_url;
     } catch (err) {
         alert('Lỗi khi tạo đường dẫn đăng nhập Gmail: ' + err.message);
         console.error('gmailLogin error:', err);
+    }
+}
+
+async function checkRuntimeConfig() {
+    try {
+        const [providersResp, statusResp] = await Promise.all([
+            apiFetch(`${API_BASE}/chat/providers`),
+            apiFetch(`${API_BASE}/status`)
+        ]);
+
+        const providersData = await providersResp.json();
+        const statusData = await statusResp.json();
+
+        const providers = providersData?.providers?.configured_providers || [];
+        const demoMode = !!providersData?.providers?.demo_mode;
+
+        if (demoMode || providers.length === 0) {
+            showNotification('⚠️ Chat đang ở Demo Mode. Hãy thêm API key AI trên Vercel.', 'info');
+        }
+
+        if (statusData && statusData.gmail_configured === false) {
+            showNotification('⚠️ Gmail OAuth chưa cấu hình. Thiếu GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET.', 'info');
+        }
+    } catch (error) {
+        console.error('Runtime config check failed:', error);
     }
 }
 

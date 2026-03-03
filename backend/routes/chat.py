@@ -5,8 +5,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.ai_service import AIService
-from services.gmail_service import GmailService
-from services.schedule_service import ScheduleService
 from models.history import History
 from models.schedule import Schedule
 from utils.user_context import get_current_user_id, get_user_db_path

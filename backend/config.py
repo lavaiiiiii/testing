@@ -65,9 +65,24 @@ class Config:
     AI_TASK_PROVIDERS_ANALYZE = os.getenv('AI_TASK_PROVIDERS_ANALYZE', '')
     
     # Gmail config
-    GMAIL_CLIENT_ID = _first_env('GMAIL_CLIENT_ID', 'GOOGLE_CLIENT_ID')
-    GMAIL_CLIENT_SECRET = _first_env('GMAIL_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET')
-    GMAIL_CREDENTIALS_JSON = _first_env('GMAIL_CREDENTIALS_JSON', 'GOOGLE_OAUTH_CLIENT_JSON')
+    GMAIL_CLIENT_ID = _first_env(
+        'GMAIL_CLIENT_ID',
+        'GOOGLE_CLIENT_ID',
+        'GOOGLE_OAUTH_CLIENT_ID',
+        'OAUTH_CLIENT_ID'
+    )
+    GMAIL_CLIENT_SECRET = _first_env(
+        'GMAIL_CLIENT_SECRET',
+        'GOOGLE_CLIENT_SECRET',
+        'GOOGLE_OAUTH_CLIENT_SECRET',
+        'OAUTH_CLIENT_SECRET'
+    )
+    GMAIL_CREDENTIALS_JSON = _first_env(
+        'GMAIL_CREDENTIALS_JSON',
+        'GOOGLE_OAUTH_CLIENT_JSON',
+        'GMAIL_CREDENTIALS_JSON_BASE64',
+        'GOOGLE_OAUTH_CLIENT_JSON_BASE64'
+    )
     GMAIL_CREDENTIALS_FILE = os.path.join(PROJECT_DATA_DIR, 'gmail_credentials.json')
     GMAIL_TOKEN_FILE = os.path.join(DATA_DIR, 'gmail_token.pickle')
     # Optional: set this to the redirect URI registered in Google Cloud Console

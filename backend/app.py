@@ -83,7 +83,12 @@ def get_status():
         'ai_providers_configured': [name for name, ok in ai_map.items() if ok],
         'ai_missing_providers': missing_ai,
         'gmail_configured': gmail_from_env or gmail_from_json or gmail_from_file,
-        'gmail_config_source': 'env' if gmail_from_env else ('env_json' if gmail_from_json else ('file' if gmail_from_file else 'missing'))
+        'gmail_config_source': 'env' if gmail_from_env else ('env_json' if gmail_from_json else ('file' if gmail_from_file else 'missing')),
+        'gmail_expected_env': [
+            'GMAIL_CLIENT_ID / GOOGLE_CLIENT_ID / GOOGLE_OAUTH_CLIENT_ID / OAUTH_CLIENT_ID',
+            'GMAIL_CLIENT_SECRET / GOOGLE_CLIENT_SECRET / GOOGLE_OAUTH_CLIENT_SECRET / OAUTH_CLIENT_SECRET',
+            'GMAIL_CREDENTIALS_JSON / GOOGLE_OAUTH_CLIENT_JSON (optional alternative)'
+        ]
     })
 
 if __name__ == '__main__':

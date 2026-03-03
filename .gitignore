@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment and secrets
+.env
+
+# Local data and tokens
+data/*.db
+data/*.pickle
+data/gmail_credentials.json
+data/users/*.db
+data/users/*.pickle
+
+# IDE
+.vscode/

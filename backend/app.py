@@ -1,0 +1,73 @@
+from flask import Flask, send_from_directory, jsonify
+from flask_cors import CORS
+import os
+import sys
+
+# Add backend directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Allow insecure OAuth transport for local development (HTTP)
+# Must be set before importing google oauth flow modules
+os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
+
+from config import Config
+from models.schedule import Schedule
+from models.history import History
+from routes.chat import chat_bp
+from routes.email import email_bp
+from routes.schedule import schedule_bp
+
+app = Flask(__name__)
+app.config.from_object(Config)
+# Allow CORS with credentials for the frontend origin(s) so session cookies are preserved
+allowed_origins = [
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+    "http://192.168.0.102:5000"
+]
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
+
+# Register blueprints
+app.register_blueprint(chat_bp)
+app.register_blueprint(email_bp)
+app.register_blueprint(schedule_bp)
+
+# Ensure data directory exists
+os.makedirs(os.path.dirname(Config.DATABASE_PATH), exist_ok=True)
+
+# Initialize databases
+Schedule.init_db()
+History.init_db()
+
+# Serve frontend
+@app.route('/')
+def serve_frontend():
+    """Serve frontend index.html"""
+    return send_from_directory('../frontend', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files"""
+    if path.startswith('css/') or path.startswith('js/'):
+        return send_from_directory('../frontend', path)
+    return send_from_directory('../frontend', 'index.html')
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    """Get system status"""
+    return jsonify({
+        'status': 'running',
+        'openai_configured': bool(Config.OPENAI_API_KEY),
+        'mistral_configured': bool(Config.MISTRAL_API_KEY),
+        'claude_configured': bool(Config.CLAUDE_API_KEY),
+        'gemini_configured': bool(Config.GEMINI_API_KEY),
+        'gmail_configured': os.path.exists(Config.GMAIL_CREDENTIALS_FILE)
+    })
+
+if __name__ == '__main__':
+    app.run(host=Config.API_HOST, port=Config.API_PORT, debug=Config.DEBUG)

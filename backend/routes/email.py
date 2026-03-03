@@ -15,6 +15,7 @@ from services.mistral_service import MistralService
 from services.ai_service import AIService
 from models.history import History
 from config import Config
+from config import GMAIL_CLIENT_ID_KEYS, GMAIL_CLIENT_SECRET_KEYS, GMAIL_CREDENTIALS_JSON_KEYS
 from utils.user_context import get_current_user_id, get_user_db_path, get_user_token_file
 
 """Email-related endpoints including OAuth login and Gmail access"""
@@ -182,13 +183,28 @@ def _build_oauth_flow(state=None):
 @email_bp.route('/oauth-config-check', methods=['GET'])
 def oauth_config_check():
     """Safe diagnostics for OAuth configuration (no secret values)."""
+    id_env_presence = {key: bool((os.getenv(key) or '').strip()) for key in GMAIL_CLIENT_ID_KEYS}
+    secret_env_presence = {key: bool((os.getenv(key) or '').strip()) for key in GMAIL_CLIENT_SECRET_KEYS}
+    json_env_presence = {key: bool((os.getenv(key) or '').strip()) for key in GMAIL_CREDENTIALS_JSON_KEYS}
+
     return jsonify({
         'success': True,
         'has_client_id': bool((Config.GMAIL_CLIENT_ID or '').strip()),
         'has_client_secret': bool((Config.GMAIL_CLIENT_SECRET or '').strip()),
         'has_credentials_json': bool((Config.GMAIL_CREDENTIALS_JSON or '').strip()),
         'has_credentials_file': os.path.exists(Config.GMAIL_CREDENTIALS_FILE),
-        'redirect_uri_preview': _get_redirect_uri()
+        'redirect_uri_preview': _get_redirect_uri(),
+        'deployment': {
+            'vercel': bool(os.getenv('VERCEL')),
+            'vercel_url': os.getenv('VERCEL_URL', ''),
+            'host_header': request.headers.get('host', ''),
+            'forwarded_host': request.headers.get('x-forwarded-host', '')
+        },
+        'env_presence': {
+            'client_id_keys': id_env_presence,
+            'client_secret_keys': secret_env_presence,
+            'credentials_json_keys': json_env_presence
+        }
     })
 
 

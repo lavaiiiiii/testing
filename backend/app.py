@@ -1,8 +1,9 @@
-from flask import Flask, send_from_directory, jsonify
+from flask import Flask, send_from_directory, jsonify, session as flask_session
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
+import logging
 
 # Add backend directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,8 +21,27 @@ from routes.email import email_bp
 from routes.schedule import schedule_bp
 from routes.user import user_bp
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Enhanced session configuration for OAuth and user tracking
+app.config.update(
+    SESSION_COOKIE_SECURE=False,  # HTTP in development, set to True for HTTPS production
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent JS from accessing session cookie
+    SESSION_COOKIE_SAMESITE='Lax',  # Allow cross-site redirects from OAuth providers
+    PERMANENT_SESSION_LIFETIME=86400,  # 24 hours
+    SESSION_REFRESH_EACH_REQUEST=True,  # Extend session lifetime on each request
+)
+
+# Set permanent session to persist across server restarts
+@app.before_request
+def make_session_permanent():
+    flask_session.permanent = True
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 # Allow CORS with credentials for the frontend origin(s) so session cookies are preserved
 allowed_origins = [
@@ -79,21 +99,38 @@ def get_status():
     missing_ai = [name for name, ok in ai_map.items() if not ok]
 
     return jsonify({
-        'status': 'running',
-        'openai_configured': ai_map['openai'],
-        'mistral_configured': ai_map['mistral'],
-        'claude_configured': ai_map['claude'],
-        'gemini_configured': ai_map['gemini'],
-        'ai_providers_configured': [name for name, ok in ai_map.items() if ok],
-        'ai_missing_providers': missing_ai,
         'gmail_configured': gmail_from_env or gmail_from_json or gmail_from_file,
-        'gmail_config_source': 'env' if gmail_from_env else ('env_json' if gmail_from_json else ('file' if gmail_from_file else 'missing')),
-        'gmail_expected_env': [
-            'GMAIL_CLIENT_ID / GOOGLE_CLIENT_ID / GOOGLE_OAUTH_CLIENT_ID / OAUTH_CLIENT_ID',
-            'GMAIL_CLIENT_SECRET / GOOGLE_CLIENT_SECRET / GOOGLE_OAUTH_CLIENT_SECRET / OAUTH_CLIENT_SECRET',
-            'GMAIL_CREDENTIALS_JSON / GOOGLE_OAUTH_CLIENT_JSON (optional alternative)'
-        ]
+        'gmail_methods': {
+            'env_vars': gmail_from_env,
+            'json_env': gmail_from_json,
+            'credentials_file': gmail_from_file
+        },
+        'ai_providers': {k: v for k, v in ai_map.items()},
+        'missing_ai_providers': missing_ai,
+        'all_ready': not missing_ai
     })
+
+@app.route('/api/debug/session', methods=['GET'])
+def debug_session():
+    """Debug: Check session state (development only)"""
+    if not app.debug:
+        return jsonify({'error': 'Not available in production'}), 403
+    
+    session_data = dict(flask_session)
+    # Don't expose sensitive data
+    safe_data = {
+        'user_id': session_data.get('user_id'),
+        'gmail_user_email': session_data.get('gmail_user_email'),
+        'gmail_user_name': session_data.get('gmail_user_name'),
+        'has_oauth_state': bool(session_data.get('oauth_state')),
+        'keys': list(session_data.keys())
+    }
+    
+    return jsonify({
+        'session': safe_data,
+        'cookies_sent': bool(app.config.get('SESSION_COOKIE_SECURE'))
+    })
+
 
 if __name__ == '__main__':
     app.run(host=Config.API_HOST, port=Config.API_PORT, debug=Config.DEBUG)

@@ -5,6 +5,7 @@ import pickle
 import json
 import base64
 import requests
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,6 +21,9 @@ from utils.user_context import get_current_user_id, get_user_db_path, get_user_t
 
 """Email-related endpoints including OAuth login and Gmail access"""
 email_bp = Blueprint('email', __name__, url_prefix='/api/email')
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Initialize Mistral AI service
 mistral_service = MistralService()
@@ -212,9 +216,20 @@ def oauth_config_check():
 def get_unread_emails():
     """Get unread emails filtered by selected category using AI classifier."""
     user_id = get_current_user_id(request, session=session)
+    logger.debug(f"get_unread_emails: user_id resolved to: {user_id}")
+    logger.debug(f"get_unread_emails: session keys: {list(session.keys()) if session else 'No session'}")
+    
     service = _load_gmail_service(user_id)
     if not service:
-        return jsonify({'error': 'not_authenticated', 'auth_url': url_for('email.gmail_auth', _external=True)}), 401
+        logger.warning(f"Gmail service not available for user: {user_id}")
+        return jsonify({
+            'error': 'not_authenticated', 
+            'auth_url': url_for('email.gmail_auth_url', _external=True),
+            'debug': {
+                'user_id': user_id,
+                'session_has_email': 'gmail_user_email' in session if session else False
+            }
+        }), 401
 
     try:
         max_results = request.args.get('max_results', 10, type=int)
@@ -235,6 +250,7 @@ def get_unread_emails():
             'matched_count': len(filtered_emails)
         })
     except Exception as e:
+        logger.error(f"Error in get_unread_emails: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -396,25 +412,28 @@ def gmail_auth():
 @email_bp.route('/oauth2callback', methods=['GET'])
 def oauth2callback():
     """Handle redirect from Google and store credentials."""
+    logger.info("OAuth2 callback invoked")
+    
     # Rebuild the Flow using the stored state and client secrets
     state = session.pop('oauth_state', None)
     if not state:
-        return jsonify({'error': 'flow_not_initialized'}), 400
+        logger.error("OAuth state not found in session")
+        return jsonify({'error': 'flow_not_initialized', 'message': 'OAuth state expired or missing'}), 400
 
     try:
         flow = _build_oauth_flow(state=state)
     except Exception as e:
+        logger.error(f"Failed to build OAuth flow: {e}")
         return jsonify({'error': str(e)}), 503
+    
     # restore PKCE code_verifier from session if present
     code_verifier = session.pop('oauth_code_verifier', None)
     try:
         if code_verifier:
-            # primary attempt: set attribute on flow
             try:
                 setattr(flow, 'code_verifier', code_verifier)
             except Exception:
                 pass
-            # fallback: set on internal client object if present
             if hasattr(flow, '_client'):
                 try:
                     setattr(flow._client, 'code_verifier', code_verifier)
@@ -423,34 +442,48 @@ def oauth2callback():
     except Exception:
         pass
 
-    flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
+    try:
+        flow.fetch_token(authorization_response=request.url)
+        creds = flow.credentials
+    except Exception as e:
+        logger.error(f"Failed to fetch token: {e}")
+        return jsonify({'error': 'token_fetch_failed', 'message': str(e)}), 400
 
-    # Identify Gmail account email from profile
-    gmail_service = build('gmail', 'v1', credentials=creds)
-    profile = gmail_service.users().getProfile(userId='me').execute()
-    gmail_email = profile.get('emailAddress', '')
+    try:
+        # Identify Gmail account email from profile
+        gmail_service = build('gmail', 'v1', credentials=creds)
+        profile = gmail_service.users().getProfile(userId='me').execute()
+        gmail_email = profile.get('emailAddress', '')
+        logger.info(f"Gmail profile retrieved: {gmail_email}")
 
-    # Fetch richer account profile for UI
-    userinfo = _fetch_google_userinfo(creds)
-    gmail_name = userinfo.get('name', '')
-    gmail_picture = userinfo.get('picture', '')
-    if userinfo.get('email'):
-        gmail_email = userinfo.get('email')
+        # Fetch richer account profile for UI
+        userinfo = _fetch_google_userinfo(creds)
+        gmail_name = userinfo.get('name', '')
+        gmail_picture = userinfo.get('picture', '')
+        if userinfo.get('email'):
+            gmail_email = userinfo.get('email')
 
-    user_id = gmail_email or 'default'
+        user_id = gmail_email or 'default'
+        logger.info(f"Setting session for user: {user_id}")
 
-    token_file = get_user_token_file(user_id)
-    with open(token_file, 'wb') as token:
-        pickle.dump(creds, token)
+        # Save token
+        token_file = get_user_token_file(user_id)
+        with open(token_file, 'wb') as token:
+            pickle.dump(creds, token)
+        logger.info(f"Token saved for user: {token_file}")
 
-    session['gmail_user_email'] = gmail_email
-    session['gmail_user_name'] = gmail_name
-    session['gmail_user_picture'] = gmail_picture
-    session['user_id'] = user_id
-    
-    # Redirect back to frontend UI with success indicator
-    return redirect('/?gmail_auth=success')
+        # Set session variables
+        session['gmail_user_email'] = gmail_email
+        session['gmail_user_name'] = gmail_name
+        session['gmail_user_picture'] = gmail_picture
+        session['user_id'] = user_id
+        logger.info(f"Session variables set. Email: {gmail_email}, Name: {gmail_name}")
+        
+        # Redirect back to frontend UI with success indicator
+        return redirect('/?gmail_auth=success')
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}", exc_info=True)
+        return jsonify({'error': 'callback_error', 'message': str(e)}), 500
 
 
 @email_bp.route('/auth_url', methods=['GET'])

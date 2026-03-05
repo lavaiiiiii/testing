@@ -47,11 +47,12 @@ function checkOAuthCallback() {
     // Check if redirected from Gmail OAuth
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('gmail_auth') === 'success') {
+        console.log('OAuth callback detected - session should be established');
+        
         // Switch to email page
         const emailNavBtn = document.querySelector('[data-page="emails"]');
         if (emailNavBtn) {
             handlePageChange(emailNavBtn);
-            // Show success message
             showNotification('✅ Gmail đã kết nối thành công!', 'success');
             
             // Mark Gmail as connected in user profile
@@ -60,20 +61,30 @@ function checkOAuthCallback() {
                 headers: { 'Content-Type': 'application/json' }
             }).catch(err => console.error('Error marking Gmail connected:', err));
             
-            refreshAuthButtons();
-            loadUserProfile();
-            
-            // Auto-load today's emails after successful login
+            // Verify session was persisted by checking auth status
             setTimeout(() => {
-                loadEmails();
+                refreshAuthButtons();
+                loadUserProfile();
                 
-                // Also auto-set date picker to today for daily report
-                const dateInput = document.getElementById('reportDate');
-                if (dateInput) {
-                    const today = new Date().toISOString().split('T')[0];
-                    dateInput.value = today;
-                }
-            }, 500);
+                // Wait a bit more, then load emails with retry logic
+                setTimeout(async () => {
+                    try {
+                        console.log('Loading emails after OAuth...');
+                        await loadEmails();
+                    } catch (err) {
+                        console.error('First email load failed, retrying:', err);
+                        // Retry after session refresh
+                        setTimeout(() => loadEmails(), 1000);
+                    }
+                    
+                    // Also auto-set date picker to today for daily report
+                    const dateInput = document.getElementById('reportDate');
+                    if (dateInput) {
+                        const today = new Date().toISOString().split('T')[0];
+                        dateInput.value = today;
+                    }
+                }, 300);
+            }, 200);
         }
         // Clean URL
         window.history.replaceState({}, document.title, window.location.pathname);

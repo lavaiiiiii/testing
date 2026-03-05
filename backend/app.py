@@ -14,9 +14,11 @@ os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 from config import Config
 from models.schedule import Schedule
 from models.history import History
+from models.user import User
 from routes.chat import chat_bp
 from routes.email import email_bp
 from routes.schedule import schedule_bp
+from routes.user import user_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -33,6 +35,7 @@ CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credenti
 app.register_blueprint(chat_bp)
 app.register_blueprint(email_bp)
 app.register_blueprint(schedule_bp)
+app.register_blueprint(user_bp)
 
 # Ensure data directory exists
 os.makedirs(os.path.dirname(Config.DATABASE_PATH), exist_ok=True)
@@ -40,6 +43,7 @@ os.makedirs(os.path.dirname(Config.DATABASE_PATH), exist_ok=True)
 # Initialize databases
 Schedule.init_db()
 History.init_db()
+User.init_db()
 
 # Serve frontend
 @app.route('/')

@@ -29,6 +29,7 @@ let currentTab = {};
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
+    loadUserProfile();
     loadChatHistory();
     checkOAuthCallback();
     refreshAuthButtons();
@@ -52,7 +53,15 @@ function checkOAuthCallback() {
             handlePageChange(emailNavBtn);
             // Show success message
             showNotification('✅ Gmail đã kết nối thành công!', 'success');
+            
+            // Mark Gmail as connected in user profile
+            apiFetch(`${API_BASE}/user/gmail-connected`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(err => console.error('Error marking Gmail connected:', err));
+            
             refreshAuthButtons();
+            loadUserProfile();
             
             // Auto-load today's emails after successful login
             setTimeout(() => {
@@ -131,6 +140,10 @@ function setupEventListeners() {
     // Clear history
     clearBtn.addEventListener('click', clearConversation);
     
+    // User avatar - click to login Gmail
+    const userAvatar = document.getElementById('userAvatar');
+    if (userAvatar) userAvatar.addEventListener('click', gmailLogin);
+    
     // Other buttons
     document.getElementById('refreshEmailsBtn').addEventListener('click', loadEmails);
     if (openGmailBtn) openGmailBtn.addEventListener('click', () => window.open('https://mail.google.com', '_blank'));
@@ -196,7 +209,15 @@ async function gmailLogout() {
 
         if (data.success) {
             showNotification('✅ Đã đăng xuất Gmail', 'success');
+            
+            // Mark Gmail as disconnected in user profile
+            apiFetch(`${API_BASE}/user/gmail-disconnected`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(err => console.error('Error marking Gmail disconnected:', err));
+            
             await refreshAuthButtons();
+            loadUserProfile();
             const emailsList = document.getElementById('emailsList');
             if (emailsList) {
                 emailsList.innerHTML = '<p>Đã đăng xuất Gmail. Vui lòng đăng nhập lại.</p>';
@@ -293,9 +314,44 @@ async function sendMessage() {
 function addMessage(text, role) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-    messageDiv.innerHTML = `<div class="message-content">${escapeHtml(text)}</div>`;
+    messageDiv.innerHTML = `<div class="message-content">${renderMarkdown(escapeHtml(text))}</div>`;
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function loadUserProfile() {
+    try {
+        const response = await apiFetch(`${API_BASE}/user/profile`);
+        const data = await response.json();
+        
+        if (data.success && data.user) {
+            const user = data.user;
+            const userAvatar = document.getElementById('userAvatar');
+            const userName = document.getElementById('userName');
+            
+            if (userName) userName.textContent = user.name || 'Teacher';
+            
+            if (userAvatar) {
+                if (user.avatar_url) {
+                    userAvatar.src = user.avatar_url;
+                } else {
+                    // Default avatar with initials
+                    const initials = (user.name || 'T').substring(0, 1).toUpperCase();
+                    userAvatar.style.backgroundColor = '#4F46E5';
+                    userAvatar.style.display = 'flex';
+                    userAvatar.style.alignItems = 'center';
+                    userAvatar.style.justifyContent = 'center';
+                    userAvatar.style.fontSize = '20px';
+                    userAvatar.style.fontWeight = 'bold';
+                    userAvatar.style.color = 'white';
+                    userAvatar.textContent = initials;
+                }
+                userAvatar.title = 'Click để đăng nhập Gmail';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading user profile:', error);
+    }
 }
 
 async function loadChatHistory() {
@@ -864,4 +920,42 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+    // Already escaped HTML
+    let result = text;
+    
+    // Code blocks with triple backticks
+    result = result.replace(/```(.*?)```/gs, (match, code) => {
+        const language = code.split('\n')[0].trim();
+        const content = code.substring(language.length).trim();
+        return `<pre><code class="language-${language}">${escapeHtml(content)}</code></pre>`;
+    });
+    
+    // Inline code with single backticks
+    result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Bold **text**
+    result = result.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+    result = result.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    
+    // Italic *text* and _text_
+    result = result.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
+    result = result.replace(/_([^_]+)_/g, '<em>$1</em>');
+    
+    // Links [text](url)
+    result = result.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    
+    // Line breaks
+    result = result.replace(/\n/g, '<br>');
+    
+    // Blockquotes > text
+    result = result.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    
+    // Lists
+    result = result.replace(/^\- (.+)$/gm, '<li>$1</li>');
+    result = result.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+    
+    return result;
 }

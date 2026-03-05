@@ -54,21 +54,21 @@ class Config:
     # Database
     DATABASE_PATH = os.path.join(DATA_DIR, 'assistant.db')
     
-    # OpenAI config
+    # OpenAI config - upgraded to GPT-4
     OPENAI_API_KEY = _first_env('OPENAI_API_KEY', 'OPENAI_KEY')
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4-mini')
     
-    # Mistral AI config
+    # Mistral AI config - upgraded to medium
     MISTRAL_API_KEY = _first_env('MISTRAL_API_KEY', 'MISTRAL_KEY')
-    MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistral-small')
+    MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistral-medium')
 
-    # Claude (Anthropic) config
+    # Claude (Anthropic) config - upgraded to opus
     CLAUDE_API_KEY = _first_env('CLAUDE_API_KEY', 'ANTHROPIC_API_KEY')
-    CLAUDE_MODEL = os.getenv('CLAUDE_MODEL', 'claude-3-5-haiku-latest')
+    CLAUDE_MODEL = os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-latest')
 
-    # Gemini config
+    # Gemini config - upgraded to pro
     GEMINI_API_KEY = _first_env('GEMINI_API_KEY', 'GOOGLE_API_KEY')
-    GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+    GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-pro')
 
     # Multi-provider orchestration
     AI_PRIMARY_PROVIDER = os.getenv('AI_PRIMARY_PROVIDER', 'openai').lower()

@@ -185,6 +185,36 @@
         </div>
     </div>
     
+    <!-- Edit Schedule Modal -->
+    <div id="editScheduleModal" class="modal">
+        <div class="modal-content">
+            <span class="close" data-modal="editScheduleModal">&times;</span>
+            <h2>Chỉnh sửa lịch hẹn</h2>
+            <form id="editScheduleForm">
+                <div class="form-group">
+                    <label>Tiêu đề</label>
+                    <input type="text" id="editScheduleTitle" placeholder="Tiêu đề lịch hẹn" required>
+                </div>
+                <div class="form-group">
+                    <label>Mô tả</label>
+                    <textarea id="editScheduleDesc" placeholder="Mô tả chi tiết" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Ngày giờ</label>
+                    <input type="datetime-local" id="editScheduleTime" required>
+                </div>
+                <div class="form-group">
+                    <label>Người tham dự (email, cách nhau bằng dấu phẩy)</label>
+                    <input type="text" id="editScheduleAttendees" placeholder="email1@example.com, email2@example.com">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Lưu thay đổi</button>
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('editScheduleModal').style.display='none'">Hủy</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script src="/js/app.js"></script>
 </body>
 </html>

@@ -497,6 +497,98 @@ body {
     transform: translateY(-2px);
 }
 
+/* Schedule Item Actions */
+.schedule-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.schedule-item-info {
+    flex: 1;
+}
+
+.schedule-item-title {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.schedule-item-time {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.schedule-item-status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.schedule-item-status.pending {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+.schedule-item-status.completed {
+    background-color: #D1FAE5;
+    color: #065F46;
+}
+
+.schedule-item-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+}
+
+.schedule-item-actions button {
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.schedule-item-actions button:hover {
+    background-color: var(--bg-light);
+}
+
+.schedule-item-actions .btn-check {
+    background-color: #D1FAE5;
+    border-color: #10B981;
+    color: #065F46;
+}
+
+.schedule-item-actions .btn-check:hover {
+    background-color: #A7F3D0;
+}
+
+.schedule-item-actions .btn-edit {
+    background-color: #E0E7FF;
+    border-color: #4F46E5;
+    color: #3730A3;
+}
+
+.schedule-item-actions .btn-edit:hover {
+    background-color: #C7D2FE;
+}
+
+.schedule-item-actions .btn-delete {
+    background-color: #FEE2E2;
+    border-color: #EF4444;
+    color: #7F1D1D;
+}
+
+.schedule-item-actions .btn-delete:hover {
+    background-color: #FECACA;
+}
+
 .email-item-header {
     display: flex;
     justify-content: space-between;

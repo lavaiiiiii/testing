@@ -88,3 +88,47 @@ class Schedule:
         ''', (status, schedule_id))
         conn.commit()
         conn.close()
+
+    @staticmethod
+    def update(schedule_id, **kwargs, db_path=None):
+        """Update schedule information"""
+        db_path = kwargs.pop('db_path', None) or Config.DATABASE_PATH
+        Schedule.init_db(db_path=db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        allowed_fields = ['title', 'description', 'start_time', 'end_time', 'attendees', 'email_body', 'status']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        
+        if not updates:
+            conn.close()
+            return False
+        
+        updates['updated_at'] = datetime.now().isoformat()
+        
+        set_clause = ', '.join([f'{k} = ?' for k in updates.keys()])
+        values = list(updates.values())
+        values.append(schedule_id)
+        
+        cursor.execute(f'''
+            UPDATE schedules
+            SET {set_clause}
+            WHERE id = ?
+        ''', values)
+        
+        conn.commit()
+        conn.close()
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def delete(schedule_id, db_path=None):
+        """Delete schedule"""
+        db_path = db_path or Config.DATABASE_PATH
+        Schedule.init_db(db_path=db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM schedules WHERE id = ?', (schedule_id,))
+        conn.commit()
+        deleted = cursor.rowcount
+        conn.close()
+        return deleted > 0

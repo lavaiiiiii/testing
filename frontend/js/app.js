@@ -136,6 +136,13 @@ function setupEventListeners() {
     // Forms
     composeForm.addEventListener('submit', handleComposeSubmit);
     scheduleForm.addEventListener('submit', handleScheduleSubmit);
+    document.getElementById('editScheduleForm').addEventListener('submit', handleEditScheduleSubmit);
+    
+    // Modal close handlers
+    const editScheduleModal = document.getElementById('editScheduleModal');
+    editScheduleModal.querySelector('.close').addEventListener('click', () => {
+        editScheduleModal.style.display = 'none';
+    });
     
     // Clear history
     clearBtn.addEventListener('click', clearConversation);
@@ -815,12 +822,24 @@ async function loadSchedules() {
                 const scheduleDiv = document.createElement('div');
                 scheduleDiv.className = 'schedule-item';
                 const startTime = new Date(schedule.start_time).toLocaleString('vi-VN');
+                const statusClass = schedule.status === 'completed' ? 'completed' : 'pending';
+                const statusText = schedule.status === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành';
+                
                 scheduleDiv.innerHTML = `
-                    <div style="font-weight: 600;">${escapeHtml(schedule.title)}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
-                        ${startTime}
+                    <div class="schedule-item-info">
+                        <div class="schedule-item-title">${escapeHtml(schedule.title)}</div>
+                        <span class="schedule-item-status ${statusClass}">${statusText}</span>
+                        <div class="schedule-item-time">${startTime}</div>
+                        ${schedule.description ? `<div style="font-size: 13px; margin-top: 4px;">${escapeHtml(schedule.description)}</div>` : ''}
                     </div>
-                    ${schedule.description ? `<div style="font-size: 13px; margin-top: 8px;">${escapeHtml(schedule.description)}</div>` : ''}
+                    <div class="schedule-item-actions">
+                        ${schedule.status === 'completed' ? 
+                            `<button class="btn-check" onclick="markScheduleIncomplete(${schedule.id})">↩️ Chưa xong</button>` :
+                            `<button class="btn-check" onclick="markScheduleComplete(${schedule.id})">✓ Hoàn thành</button>`
+                        }
+                        <button class="btn-edit" onclick="openEditSchedule(${schedule.id})">✏️ Sửa</button>
+                        <button class="btn-delete" onclick="deleteSchedule(${schedule.id})">🗑️ Xóa</button>
+                    </div>
                 `;
                 schedulesList.appendChild(scheduleDiv);
             });
@@ -829,6 +848,128 @@ async function loadSchedules() {
         }
     } catch (error) {
         schedulesList.innerHTML = `<p>Lỗi: ${error.message}</p>`;
+    }
+}
+
+async function markScheduleComplete(scheduleId) {
+    if (!confirm('Đánh dấu lịch hẹn đã hoàn thành?')) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}/schedule/${scheduleId}/update-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'completed' })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showNotification('✓ Đã đánh dấu hoàn thành', 'success');
+            loadSchedules();
+        } else {
+            showNotification('Lỗi: ' + (data.error || 'Không thể cập nhật'), 'error');
+        }
+    } catch (error) {
+        showNotification('Lỗi: ' + error.message, 'error');
+    }
+}
+
+async function markScheduleIncomplete(scheduleId) {
+    if (!confirm('Đánh dấu lịch hẹn chưa hoàn thành?')) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}/schedule/${scheduleId}/update-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'pending' })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showNotification('↩️ Đã cập nhật trạng thái', 'success');
+            loadSchedules();
+        } else {
+            showNotification('Lỗi: ' + (data.error || 'Không thể cập nhật'), 'error');
+        }
+    } catch (error) {
+        showNotification('Lỗi: ' + error.message, 'error');
+    }
+}
+
+async function openEditSchedule(scheduleId) {
+    try {
+        // Fetch schedule details
+        const response = await apiFetch(`${API_BASE}/schedule/list`);  // Assuming we can get from list
+        const data = await response.json();
+        
+        if (!data.success) throw new Error('Không thể lấy dữ liệu');
+        
+        const schedule = data.schedules.find(s => s.id === scheduleId);
+        if (!schedule) throw new Error('Lịch hẹn không tìm thấy');
+        
+        // Populate form
+        document.getElementById('editScheduleTitle').value = schedule.title;
+        document.getElementById('editScheduleDesc').value = schedule.description || '';
+        document.getElementById('editScheduleTime').value = schedule.start_time;
+        document.getElementById('editScheduleAttendees').value = schedule.attendees || '';
+        
+        // Store ID for submit handler
+        document.getElementById('editScheduleForm').dataset.scheduleId = scheduleId;
+        
+        // Show modal
+        document.getElementById('editScheduleModal').style.display = 'block';
+    } catch (error) {
+        showNotification('Lỗi: ' + error.message, 'error');
+    }
+}
+
+async function handleEditScheduleSubmit(e) {
+    e.preventDefault();
+    
+    const scheduleId = document.getElementById('editScheduleForm').dataset.scheduleId;
+    const title = document.getElementById('editScheduleTitle').value.trim();
+    const description = document.getElementById('editScheduleDesc').value.trim();
+    const start_time = document.getElementById('editScheduleTime').value;
+    const attendees_str = document.getElementById('editScheduleAttendees').value.trim();
+    const attendees = attendees_str ? attendees_str.split(',').map(e => e.trim()) : [];
+    
+    try {
+        const response = await apiFetch(`${API_BASE}/schedule/${scheduleId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description, start_time, attendees })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showNotification('✓ Đã cập nhật lịch hẹn', 'success');
+            document.getElementById('editScheduleModal').style.display = 'none';
+            loadSchedules();
+        } else {
+            showNotification('Lỗi: ' + (data.error || 'Không thể cập nhật'), 'error');
+        }
+    } catch (error) {
+        showNotification('Lỗi: ' + error.message, 'error');
+    }
+}
+
+async function deleteSchedule(scheduleId) {
+    if (!confirm('Bạn có chắc chắn muốn xóa lịch hẹn này?')) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}/schedule/${scheduleId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showNotification('🗑️ Đã xóa lịch hẹn', 'success');
+            loadSchedules();
+        } else {
+            showNotification('Lỗi: ' + (data.error || 'Không thể xóa'), 'error');
+        }
+    } catch (error) {
+        showNotification('Lỗi: ' + error.message, 'error');
     }
 }
 

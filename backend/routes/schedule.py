@@ -98,3 +98,79 @@ def update_status(schedule_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@schedule_bp.route('/<int:schedule_id>', methods=['PUT'])
+def update_schedule(schedule_id):
+    """Update schedule information"""
+    data = request.get_json() or {}
+    user_id = get_current_user_id(request)
+    db_path = get_user_db_path(user_id)
+    
+    # Get current schedule
+    schedule = Schedule.get_by_id(schedule_id, db_path=db_path)
+    if not schedule:
+        return jsonify({'error': 'Schedule not found'}), 404
+    
+    # Prepare update data
+    update_data = {}
+    if 'title' in data:
+        update_data['title'] = data.get('title', '').strip()
+    if 'description' in data:
+        update_data['description'] = data.get('description', '').strip()
+    if 'start_time' in data:
+        update_data['start_time'] = data.get('start_time', '').strip()
+    if 'end_time' in data:
+        update_data['end_time'] = data.get('end_time', '').strip() or None
+    if 'attendees' in data:
+        attendees = data.get('attendees', [])
+        update_data['attendees'] = ','.join(attendees) if isinstance(attendees, list) else attendees
+    
+    try:
+        Schedule.update(schedule_id, db_path=db_path, **update_data)
+        
+        History.create(
+            f"Chỉnh sửa lịch hẹn: {schedule.get('title', '')}",
+            f"Cập nhật: {', '.join(update_data.keys())}",
+            action_type='schedule_updated',
+            related_id=schedule_id,
+            db_path=db_path
+        )
+        
+        updated = Schedule.get_by_id(schedule_id, db_path=db_path)
+        return jsonify({
+            'success': True,
+            'schedule': updated
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@schedule_bp.route('/<int:schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """Delete schedule"""
+    user_id = get_current_user_id(request)
+    db_path = get_user_db_path(user_id)
+    
+    # Get schedule info before deleting
+    schedule = Schedule.get_by_id(schedule_id, db_path=db_path)
+    if not schedule:
+        return jsonify({'error': 'Schedule not found'}), 404
+    
+    try:
+        Schedule.delete(schedule_id, db_path=db_path)
+        
+        History.create(
+            f"Xóa lịch hẹn: {schedule.get('title', '')}",
+            f"Lịch hẹn đã bị xóa",
+            action_type='schedule_deleted',
+            related_id=schedule_id,
+            db_path=db_path
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f"Đã xóa lịch hẹn: {schedule.get('title', '')}"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -2,6 +2,8 @@ import os
 import sys
 import requests
 import json
+import time
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -13,6 +15,13 @@ DEMO_RESPONSES = {
     "lịch": "Tôi đề xuất lên lịch hẹn vào ngày mai lúc 14:00 để thảo luận chi tiết.",
     "default": "Xin chào! Tôi là TeacherBot - trợ lý AI cho giáo viên. Tôi có thể giúp bạn với:\n- Soạn tài liệu giáo dục\n- Phân tích email\n- Lên lịch hẹn\n- Và nhiều hơn nữa!\n\n(Hiện đang ở mode Demo - hết quota OpenAI)"
 }
+
+# Quota/rate limit error keywords
+QUOTA_ERROR_KEYWORDS = [
+    'quota', 'rate_limit', 'insufficient_quota', 'quota_exceeded',
+    'rate limit', 'too many requests', 'billing', 'overloaded',
+    'capacity', 'throttled', 'exceeded your current quota'
+]
 
 class AIService:
     def __init__(self):
@@ -45,14 +54,79 @@ class AIService:
             'gemini': 0,
             'demo': 0
         }
+        
+        # Round-robin rotation and health tracking
+        self.provider_rotation_index = 0
+        self.provider_health = {}  # {provider: {'failed_at': timestamp, 'errors': count}}
+        self.provider_cooldown_minutes = 5  # Wait 5 minutes before retrying failed provider
+        self.quota_error_cooldown_minutes = 30  # Wait 30 minutes for quota errors
 
         self.configured_providers = self._detect_configured_providers()
 
         if not self.configured_providers:
             print("⚠️  Không có AI provider khả dụng - sử dụng Demo Mode")
+    def _is_quota_error(self, error_message, status_code=None):
+        """Detect if error is related to quota/rate limits"""
+        if status_code in [429, 402, 403]:  # Too many requests, payment required, forbidden
+            return True
+        
+        error_lower = str(error_message).lower()
+        return any(keyword in error_lower for keyword in QUOTA_ERROR_KEYWORDS)
+    
+    def _mark_provider_failed(self, provider, error_message, is_quota_error=False):
+        """Mark a provider as temporarily failed with cooldown"""
+        cooldown = self.quota_error_cooldown_minutes if is_quota_error else self.provider_cooldown_minutes
+        self.provider_health[provider] = {
+            'failed_at': datetime.now(),
+            'error': str(error_message)[:200],
+            'is_quota_error': is_quota_error,
+            'cooldown_minutes': cooldown
+        }
+        error_type = "QUOTA" if is_quota_error else "ERROR"
+        print(f"🔴 {provider.upper()} {error_type}: {error_message[:100]} (cooldown: {cooldown}min)")
+    
+    def _is_provider_healthy(self, provider):
+        """Check if provider is healthy (not in cooldown period)"""
+        if provider not in self.provider_health:
+            return True
+        
+        health = self.provider_health[provider]
+        failed_at = health.get('failed_at')
+        cooldown = health.get('cooldown_minutes', self.provider_cooldown_minutes)
+        
+        if not failed_at:
+            return True
+        
+        # Check if cooldown period has passed
+        time_passed = datetime.now() - failed_at
+        if time_passed > timedelta(minutes=cooldown):
+            # Reset health status
+            del self.provider_health[provider]
+            print(f"✅ {provider.upper()} cooldown ended - back to healthy")
+            return True
+        
+        # Still in cooldown
+        remaining = cooldown - (time_passed.total_seconds() / 60)
+        return False
+    
+    def _get_next_round_robin_provider(self):
+        """Get next provider in round-robin rotation"""
+        if not self.configured_providers:
+            return None
+        
+        healthy_providers = [p for p in self.configured_providers if self._is_provider_healthy(p)]
+        
+        if not healthy_providers:
+            return None  # All providers in cooldown
+        
+        # Rotate through healthy providers
+        provider = healthy_providers[self.provider_rotation_index % len(healthy_providers)]
+        self.provider_rotation_index += 1
+        
+        return provider
     
     def generate_response(self, messages, max_tokens=None, task='chat'):
-        """Generate AI response using multi-provider fallback chain"""
+        """Generate AI response using round-robin rotation with intelligent fallback"""
         if max_tokens is None:
             max_tokens = self.task_max_tokens.get(task, self.default_max_tokens)
 
@@ -66,20 +140,56 @@ class AIService:
 
         providers = self._build_provider_chain(task=task)
         last_error = None
+        all_quota_errors = True
 
         for provider in providers:
+            # Skip unhealthy providers
+            if not self._is_provider_healthy(provider):
+                health = self.provider_health.get(provider, {})
+                remaining = health.get('cooldown_minutes', 0)
+                print(f"⏭️  Bỏ qua {provider.upper()} (đang cooldown ~{remaining}min)")
+                continue
+            
             try:
                 response = self._call_provider(provider, optimized_messages, max_tokens)
                 if response and response.strip():
+                    # Successful - mark as used
                     self.last_provider_used = provider
                     if provider in self.provider_usage:
                         self.provider_usage[provider] += 1
+                    print(f"✅ {provider.upper()} responded successfully")
                     return response
+                    
             except Exception as e:
-                last_error = f"{provider}: {str(e)}"
-                print(f"⚠️  {provider} lỗi, chuyển provider tiếp theo: {str(e)}")
+                error_msg = str(e)
+                last_error = f"{provider}: {error_msg}"
+                
+                # Check if it's a quota/rate limit error
+                status_code = getattr(e, 'response', None)
+                if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                    status_code = e.response.status_code
+                else:
+                    status_code = None
+                
+                is_quota = self._is_quota_error(error_msg, status_code)
+                
+                if is_quota:
+                    print(f"🚫 {provider.upper()} HẾT QUOTA - chuyển sang provider khác")
+                    self._mark_provider_failed(provider, error_msg, is_quota_error=True)
+                else:
+                    all_quota_errors = False
+                    print(f"⚠️  {provider.upper()} lỗi - thử provider tiếp theo: {error_msg[:100]}")
+                    self._mark_provider_failed(provider, error_msg, is_quota_error=False)
 
-        print(f"⚠️  Tất cả AI providers đều lỗi. Last error: {last_error}")
+        # All providers failed or in cooldown
+        healthy_count = len([p for p in self.configured_providers if self._is_provider_healthy(p)])
+        
+        if healthy_count == 0:
+            print(f"❌ TẤT CẢ AI PROVIDERS KHÔNG KHẢ DỤNG - chuyển Demo Mode")
+            print(f"   Last error: {last_error}")
+        else:
+            print(f"⚠️  Không thể generate response. {healthy_count} providers vẫn healthy nhưng chưa thử")
+        
         self.last_provider_used = 'demo'
         self.provider_usage['demo'] += 1
         return self._get_demo_response(optimized_messages)
@@ -104,24 +214,35 @@ class AIService:
         return configured
 
     def _build_provider_chain(self, task='chat'):
+        """Build provider chain using round-robin + health filtering"""
+        # Start with round-robin selection
         ordered = []
-        task_overrides = self.task_provider_overrides.get(task, [])
-
-        for provider in task_overrides:
-            if provider in self.configured_providers and provider not in ordered:
-                ordered.append(provider)
-
-        if not ordered and self.primary_provider in self.configured_providers:
-            ordered.append(self.primary_provider)
-
-        for provider in self.provider_order:
-            if provider in self.configured_providers and provider not in ordered:
-                ordered.append(provider)
-
-        for provider in self.configured_providers:
+        
+        # Get healthy providers only
+        healthy_providers = [p for p in self.configured_providers if self._is_provider_healthy(p)]
+        
+        if not healthy_providers:
+            # All providers in cooldown - try all configured anyway
+            print("⚠️  Tất cả providers trong cooldown - thử lại toàn bộ")
+            return self.configured_providers.copy()
+        
+        # Use round-robin to select starting provider
+        next_provider = self._get_next_round_robin_provider()
+        if next_provider and next_provider in healthy_providers:
+            ordered.append(next_provider)
+            print(f"🔄 Round-robin selected: {next_provider.upper()}")
+        
+        # Add remaining healthy providers
+        for provider in healthy_providers:
             if provider not in ordered:
                 ordered.append(provider)
-
+        
+        # Task-specific overrides (if configured)
+        task_overrides = self.task_provider_overrides.get(task, [])
+        for provider in task_overrides:
+            if provider in healthy_providers and provider not in ordered:
+                ordered.insert(0, provider)  # Prioritize task-specific providers
+        
         return ordered
 
     def _normalize_messages(self, messages):
@@ -192,47 +313,68 @@ class AIService:
         if not Config.OPENAI_API_KEY:
             raise ValueError("OpenAI chưa được cấu hình")
 
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {Config.OPENAI_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": Config.OPENAI_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": 0.5
-            },
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        return data['choices'][0]['message']['content']
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {Config.OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": Config.OPENAI_MODEL,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.5
+                },
+                timeout=self.timeout
+            )
+            
+            # Check for quota/rate limit errors
+            if response.status_code in [429, 401, 403, 402]:
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get('error', {}).get('message', f"HTTP {response.status_code}")
+                raise requests.exceptions.HTTPError(f"OpenAI quota/rate error: {error_msg}", response=response)
+            
+            response.raise_for_status()
+            data = response.json()
+            return data['choices'][0]['message']['content']
+            
+        except requests.exceptions.RequestException as e:
+            # Attach response for status code checking
+            raise e
 
     def _call_mistral(self, messages, max_tokens):
         if not Config.MISTRAL_API_KEY:
             raise ValueError("Mistral chưa được cấu hình")
 
-        response = requests.post(
-            "https://api.mistral.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {Config.MISTRAL_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": Config.MISTRAL_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": 0.4
-            },
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        return data['choices'][0]['message']['content']
+        try:
+            response = requests.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {Config.MISTRAL_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": Config.MISTRAL_MODEL,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.4
+                },
+                timeout=self.timeout
+            )
+            
+            # Check for quota/rate limit errors
+            if response.status_code in [429, 401, 403, 402]:
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get('message', f"HTTP {response.status_code}")
+                raise requests.exceptions.HTTPError(f"Mistral quota/rate error: {error_msg}", response=response)
+            
+            response.raise_for_status()
+            data = response.json()
+            return data['choices'][0]['message']['content']
+            
+        except requests.exceptions.RequestException as e:
+            raise e
 
     def _call_claude(self, messages, max_tokens):
         if not Config.CLAUDE_API_KEY:
@@ -240,28 +382,38 @@ class AIService:
 
         system_prompt, provider_messages = self._split_system_message(messages)
 
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": Config.CLAUDE_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": Config.CLAUDE_MODEL,
-                "system": system_prompt,
-                "messages": provider_messages,
-                "max_tokens": max_tokens,
-                "temperature": 0.5
-            },
-            timeout=self.timeout
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        content_parts = data.get('content', [])
-        texts = [part.get('text', '') for part in content_parts if part.get('type') == 'text']
-        return "\n".join([t for t in texts if t])
+        try:
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": Config.CLAUDE_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": Config.CLAUDE_MODEL,
+                    "system": system_prompt,
+                    "messages": provider_messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.5
+                },
+                timeout=self.timeout
+            )
+            
+            # Check for quota/rate limit errors
+            if response.status_code in [429, 401, 403, 402]:
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get('error', {}).get('message', f"HTTP {response.status_code}")
+                raise requests.exceptions.HTTPError(f"Claude quota/rate error: {error_msg}", response=response)
+            
+            response.raise_for_status()
+            data = response.json()
+            content_parts = data.get('content', [])
+            texts = [part.get('text', '') for part in content_parts if part.get('type') == 'text']
+            return "\n".join([t for t in texts if t])
+            
+        except requests.exceptions.RequestException as e:
+            raise e
 
     def _call_gemini(self, messages, max_tokens):
         if not Config.GEMINI_API_KEY:
@@ -287,22 +439,33 @@ class AIService:
                 "parts": [{"text": system_prompt}]
             }
 
-        response = requests.post(
-            endpoint,
-            headers={"content-type": "application/json"},
-            json=payload,
-            timeout=self.timeout
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                endpoint,
+                headers={"content-type": "application/json"},
+                json=payload,
+                timeout=self.timeout
+            )
+            
+            # Check for quota/rate limit errors
+            if response.status_code in [429, 401, 403, 402]:
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get('error', {}).get('message', f"HTTP {response.status_code}")
+                raise requests.exceptions.HTTPError(f"Gemini quota/rate error: {error_msg}", response=response)
+            
+            response.raise_for_status()
+            data = response.json()
+            candidates = data.get('candidates', [])
+            
+            if not candidates:
+                raise ValueError("Gemini không trả về candidates")
 
-        data = response.json()
-        candidates = data.get('candidates', [])
-        if not candidates:
-            raise ValueError("Gemini không trả về candidates")
-
-        parts = candidates[0].get('content', {}).get('parts', [])
-        texts = [part.get('text', '') for part in parts if part.get('text')]
-        return "\n".join(texts)
+            parts = candidates[0].get('content', {}).get('parts', [])
+            texts = [part.get('text', '') for part in parts if part.get('text')]
+            return "\n".join(texts)
+            
+        except requests.exceptions.RequestException as e:
+            raise e
 
     def _split_system_message(self, messages):
         system_parts = []
@@ -338,6 +501,30 @@ class AIService:
             provider for provider in ['openai', 'mistral', 'claude', 'gemini']
             if provider not in self.configured_providers
         ]
+        
+        # Get health status for all providers
+        health_status = {}
+        for provider in self.configured_providers:
+            is_healthy = self._is_provider_healthy(provider)
+            health_info = {
+                'healthy': is_healthy,
+                'usage_count': self.provider_usage.get(provider, 0)
+            }
+            
+            if not is_healthy and provider in self.provider_health:
+                failed_info = self.provider_health[provider]
+                failed_at = failed_info.get('failed_at')
+                cooldown = failed_info.get('cooldown_minutes', 5)
+                
+                if failed_at:
+                    time_passed = datetime.now() - failed_at
+                    remaining = cooldown - (time_passed.total_seconds() / 60)
+                    health_info['cooldown_remaining_minutes'] = max(0, remaining)
+                    health_info['error'] = failed_info.get('error', 'Unknown error')
+                    health_info['is_quota_error'] = failed_info.get('is_quota_error', False)
+            
+            health_status[provider] = health_info
+        
         return {
             "primary_provider": self.primary_provider,
             "provider_order": self.provider_order,
@@ -351,15 +538,11 @@ class AIService:
                 "reply": self._build_provider_chain('reply') if self.configured_providers else [],
                 "analyze": self._build_provider_chain('analyze') if self.configured_providers else []
             },
-            "last_provider_used": self.last_provider_used,
+            "provider_health": health_status,
             "provider_usage": self.provider_usage,
-            "demo_mode": len(self.configured_providers) == 0,
-            "expected_env": {
-                "openai": ["OPENAI_API_KEY", "OPENAI_KEY"],
-                "mistral": ["MISTRAL_API_KEY", "MISTRAL_KEY"],
-                "claude": ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY"],
-                "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
-            }
+            "last_provider_used": self.last_provider_used,
+            "rotation_index": self.provider_rotation_index,
+            "demo_mode": len(self.configured_providers) == 0 or all(not self._is_provider_healthy(p) for p in self.configured_providers)
         }
     
     def _get_demo_response(self, messages):

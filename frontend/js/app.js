@@ -316,9 +316,16 @@ async function sendMessage() {
         loadingDiv.remove();
         
         if (data.success) {
-            addMessage(data.response, 'assistant');
+            // Add provider badge to show which AI responded
+            const providerBadge = data.provider ? 
+                `<span class="provider-badge" style="font-size: 11px; padding: 2px 8px; background: ${data.demo_mode ? '#FF9800' : '#4CAF50'}; color: white; border-radius: 10px; margin-left: 8px;">
+                    ${data.demo_mode ? '🎭 Demo' : '🤖 ' + data.provider.toUpperCase()}
+                </span>` : '';
+            
+            addMessage(data.response, 'assistant', providerBadge);
+            
             if (data.demo_mode) {
-                showNotification('⚠️ Đang dùng Demo Mode (chưa có AI key trên server).', 'info');
+                showNotification('⚠️ Đang dùng Demo Mode - Tất cả AI providers đang trong cooldown hoặc chưa cấu hình', 'info');
             }
         } else {
             addMessage('Xảy ra lỗi: ' + (data.error || 'Unknown error'), 'assistant');
@@ -329,10 +336,10 @@ async function sendMessage() {
     }
 }
 
-function addMessage(text, role) {
+function addMessage(text, role, badge = '') {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-    messageDiv.innerHTML = `<div class="message-content">${renderMarkdown(escapeHtml(text))}</div>`;
+    messageDiv.innerHTML = `<div class="message-content">${renderMarkdown(escapeHtml(text))}${badge}</div>`;
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -439,28 +446,64 @@ async function gmailLogin() {
 
 async function checkRuntimeConfig() {
     try {
-        const [providersResp, statusResp] = await Promise.all([
-            apiFetch(`${API_BASE}/chat/providers`),
-            apiFetch(`${API_BASE}/status`)
-        ]);
-
-        const providersData = await providersResp.json();
-        const statusData = await statusResp.json();
-
-        const providers = providersData?.providers?.configured_providers || [];
-        const demoMode = !!providersData?.providers?.demo_mode;
-
-        if (demoMode || providers.length === 0) {
-            const missingProviders = providersData?.providers?.missing_providers || [];
-            const hint = missingProviders.length > 0 ? ` Thiếu: ${missingProviders.join(', ')}.` : '';
-            showNotification(`⚠️ Chat đang ở Demo Mode.${hint}`, 'info');
+        const response = await apiFetch(`${API_BASE}/chat/providers`);
+        const data = await response.json();
+        
+        if (data.success && data.providers) {
+            const providers = data.providers;
+            const statusBar = document.getElementById('providerStatus');
+            
+            // Show warning if no providers configured or all unhealthy
+            if (providers.demo_mode) {
+                if (providers.configured_providers && providers.configured_providers.length > 0) {
+                    // Has providers but all in cooldown
+                    const healthInfo = providers.provider_health || {};
+                    const cooldowns = Object.keys(healthInfo).map(p => {
+                        const h = healthInfo[p];
+                        return `${p.toUpperCase()}: ${h.cooldown_remaining_minutes ? Math.round(h.cooldown_remaining_minutes) + 'min' : 'N/A'}`;
+                    }).join(', ');
+                    
+                    console.warn(`⚠️ Demo Mode - Tất cả AI providers đang cooldown: ${cooldowns}`);
+                    
+                    if (statusBar) {
+                        statusBar.innerHTML = `🎭 <strong>Demo Mode</strong> - Tất cả AI providers đang cooldown: ${cooldowns}`;
+                        statusBar.style.background = '#FFF3E0';
+                        statusBar.style.color = '#E65100';
+                    }
+                } else {
+                    console.warn('⚠️ Demo Mode - Chưa cấu hình AI provider nào');
+                    if (statusBar) {
+                        statusBar.innerHTML = '🎭 <strong>Demo Mode</strong> - Chưa cấu hình AI provider';
+                        statusBar.style.background = '#FFF3E0';
+                        statusBar.style.color = '#E65100';
+                    }
+                }
+            } else {
+                // Show active providers with health status
+                const activeProviders = providers.configured_providers || [];
+                const healthInfo = providers.provider_health || {};
+                
+                const statusBadges = activeProviders.map(p => {
+                    const health = healthInfo[p] || {};
+                    const emoji = health.healthy ? '✅' : '⏸️';
+                    const cooldown = health.cooldown_remaining_minutes ? ` (${Math.round(health.cooldown_remaining_minutes)}min)` : '';
+                    const usageCount = health.usage_count || 0;
+                    return `${emoji} <strong>${p.toUpperCase()}</strong>${cooldown} [${usageCount}]`;
+                }).join(' | ');
+                
+                console.log(`🤖 AI Providers: ${statusBadges.replace(/<[^>]*>/g, '')}`);
+                console.log(`🔄 Round-robin index: ${providers.rotation_index || 0}`);
+                console.log(`📊 Usage: ${JSON.stringify(providers.provider_usage || {})}`);
+                
+                if (statusBar) {
+                    statusBar.innerHTML = `🔄 <strong>AI Rotation:</strong> ${statusBadges} | <span style="color: #888;">Luân phiên tự động</span>`;
+                    statusBar.style.background = '#E8F5E9';
+                    statusBar.style.color = '#1B5E20';
+                }
+            }
         }
-
-        if (statusData && statusData.gmail_configured === false) {
-            showNotification('⚠️ Gmail OAuth chưa cấu hình. Set GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET hoặc GMAIL_CREDENTIALS_JSON.', 'info');
-        }
-    } catch (error) {
-        console.error('Runtime config check failed:', error);
+    } catch (err) {
+        console.error('Không thể kiểm tra runtime config:', err);
     }
 }
 

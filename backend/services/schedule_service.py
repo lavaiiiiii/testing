@@ -1,10 +1,15 @@
-from datetime import datetime, timedelta
 import os
 import sys
+import re
+import logging
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.schedule import Schedule
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 class ScheduleService:
     @staticmethod
@@ -26,7 +31,6 @@ class ScheduleService:
             result['start_time'] = datetime.now() + timedelta(days=1)
         
         # Extract email addresses (simple pattern)
-        import re
         emails = re.findall(r'[\w\.-]+@[\w\.-]+', text)
         result['attendees'] = emails
         

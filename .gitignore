@@ -6,14 +6,37 @@ __pycache__/
 *.so
 .pytest_cache/
 .mypy_cache/
+*.egg-info/
+dist/
+build/
 
 # Virtual environments
 .venv/
 venv/
 env/
+ENV/
 
 # Environment and secrets
 .env
+.env.local
+*.key
+*.pem
+
+# Local development
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+.sublime-project
+.sublime-workspace
 
 # Local data and tokens
 data/*.db
@@ -21,6 +44,16 @@ data/*.pickle
 data/gmail_credentials.json
 data/users/*.db
 data/users/*.pickle
+data/users/*.json
 
-# IDE
-.vscode/
+# Flask/Werkzeug
+instance/
+.webassets-cache
+
+# Testing
+.coverage
+htmlcov/
+
+# Database
+*.sqlite
+*.sqlite3

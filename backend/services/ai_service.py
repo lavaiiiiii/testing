@@ -1,13 +1,16 @@
 import os
 import sys
-import requests
+import logging
 import json
-import time
+import requests
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 # Demo responses khi hết quota
 DEMO_RESPONSES = {
@@ -64,6 +67,7 @@ class AIService:
         self.configured_providers = self._detect_configured_providers()
 
         if not self.configured_providers:
+            logger.warning("⚠️  Không có AI provider khả dụng - sử dụng Demo Mode")
             print("⚠️  Không có AI provider khả dụng - sử dụng Demo Mode")
     def _is_quota_error(self, error_message, status_code=None):
         """Detect if error is related to quota/rate limits"""

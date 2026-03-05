@@ -1,11 +1,11 @@
-from flask import Blueprint, request, jsonify, redirect, url_for, session
 import os
 import sys
+import logging
 import pickle
 import json
 import base64
 import requests
-import logging
+from flask import Blueprint, request, jsonify, redirect, url_for, session
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,13 +19,13 @@ from config import Config
 from config import GMAIL_CLIENT_ID_KEYS, GMAIL_CLIENT_SECRET_KEYS, GMAIL_CREDENTIALS_JSON_KEYS
 from utils.user_context import get_current_user_id, get_user_db_path, get_user_token_file
 
-"""Email-related endpoints including OAuth login and Gmail access"""
-email_bp = Blueprint('email', __name__, url_prefix='/api/email')
-
-# Configure logging
+# Configure module logger
 logger = logging.getLogger(__name__)
 
-# Initialize Mistral AI service
+# Email-related endpoints including OAuth login and Gmail access
+email_bp = Blueprint('email', __name__, url_prefix='/api/email')
+
+# Initialize services
 mistral_service = MistralService()
 ai_service = AIService()
 

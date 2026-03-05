@@ -1,10 +1,15 @@
 import os
 import sys
+import logging
+import json
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 class MistralService:
     """Service for Mistral AI API integration - Email classification"""
@@ -69,7 +74,6 @@ Body: {body_preview[:self.max_body_preview_chars]}"""
                 content = result['choices'][0]['message']['content']
                 
                 # Parse JSON response
-                import json
                 # Try to extract JSON from response
                 try:
                     # Remove markdown code blocks if present

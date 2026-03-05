@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 import os
 import sys
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -8,6 +9,9 @@ from services.ai_service import AIService
 from models.history import History
 from models.schedule import Schedule
 from utils.user_context import get_current_user_id, get_user_db_path
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 ai_service = AIService()

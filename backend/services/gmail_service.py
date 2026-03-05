@@ -1,6 +1,9 @@
 import os
-import pickle
 import sys
+import logging
+import pickle
+import base64
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -10,9 +13,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.exceptions import GoogleAuthError
 from googleapiclient.discovery import build
 from config import Config
-import base64
-import email
-from datetime import datetime, timedelta
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 class GmailService:
     # require both read and send permissions for our features

@@ -129,11 +129,7 @@ function setupEventListeners() {
     scheduleForm.addEventListener('submit', handleScheduleSubmit);
     
     // Clear history
-    clearBtn.addEventListener('click', () => {
-        if (confirm('Bạn có chắc chắn muốn xóa lịch sử?')) {
-            chatMessages.innerHTML = '';
-        }
-    });
+    clearBtn.addEventListener('click', clearConversation);
     
     // Other buttons
     document.getElementById('refreshEmailsBtn').addEventListener('click', loadEmails);
@@ -316,6 +312,28 @@ async function loadChatHistory() {
         }
     } catch (error) {
         console.error('Error loading chat history:', error);
+    }
+}
+
+async function clearConversation() {
+    if (!confirm('Bạn có chắc chắn muốn làm mới cuộc trò chuyện?')) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}/chat/clear`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            chatMessages.innerHTML = '';
+            showNotification(`${data.message}`, 'success');
+        } else {
+            showNotification('Lỗi khi xóa lịch sử', 'error');
+        }
+    } catch (error) {
+        showNotification('Lỗi kết nối: ' + error.message, 'error');
     }
 }
 

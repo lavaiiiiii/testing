@@ -132,3 +132,32 @@ def get_ai_providers():
         'success': True,
         'providers': ai_service.get_provider_status()
     })
+
+@chat_bp.route('/clear', methods=['POST'])
+def clear_conversation():
+    """Clear conversation history"""
+    user_id = get_current_user_id(request)
+    db_path = get_user_db_path(user_id)
+    
+    # Delete only chat messages, preserve email and schedule history
+    deleted_count = History.clear_all(action_type='chat', db_path=db_path)
+    
+    return jsonify({
+        'success': True,
+        'message': f'Đã xóa {deleted_count} tin nhắn',
+        'deleted_count': deleted_count
+    })
+
+@chat_bp.route('/clear-all', methods=['POST'])
+def clear_all_history():
+    """Clear all history including emails and schedules"""
+    user_id = get_current_user_id(request)
+    db_path = get_user_db_path(user_id)
+    
+    deleted_count = History.clear_all(db_path=db_path)
+    
+    return jsonify({
+        'success': True,
+        'message': f'Đã xóa {deleted_count} bản ghi lịch sử',
+        'deleted_count': deleted_count
+    })

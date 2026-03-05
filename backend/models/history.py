@@ -73,3 +73,21 @@ class History:
         records = cursor.fetchall()
         conn.close()
         return [dict(r) for r in records]
+    
+    @staticmethod
+    def clear_all(action_type=None, db_path=None):
+        """Clear history records - optionally by action type"""
+        db_path = db_path or Config.DATABASE_PATH
+        History.init_db(db_path=db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        if action_type:
+            cursor.execute('DELETE FROM history WHERE action_type = ?', (action_type,))
+        else:
+            cursor.execute('DELETE FROM history')
+        
+        conn.commit()
+        deleted_count = cursor.rowcount
+        conn.close()
+        return deleted_count

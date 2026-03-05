@@ -90,7 +90,7 @@ class Schedule:
         conn.close()
 
     @staticmethod
-    def update(schedule_id, **kwargs, db_path=None):
+    def update(schedule_id, **kwargs):
         """Update schedule information"""
         db_path = kwargs.pop('db_path', None) or Config.DATABASE_PATH
         Schedule.init_db(db_path=db_path)

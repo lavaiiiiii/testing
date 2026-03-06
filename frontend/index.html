@@ -70,8 +70,8 @@
                             </div>
                         </div>
                         <select id="emailFilterSelect" class="filter-select">
-                            <option value="all">Tất cả</option>
-                            <option value="education" selected>Giáo dục</option>
+                            <option value="all" selected>Tất cả</option>
+                            <option value="education">Giáo dục</option>
                             <option value="work">Công việc</option>
                             <option value="meeting">Họp</option>
                             <option value="promotion">Khuyến mãi</option>
@@ -79,6 +79,10 @@
                             <option value="personal">Cá nhân</option>
                             <option value="other">Khác</option>
                         </select>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f5f5f5; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" id="includeReadCheckbox" style="cursor: pointer;">
+                            <span style="font-size: 14px;">Hiện cả đã đọc</span>
+                        </label>
                         <button id="refreshEmailsBtn" class="btn-secondary">Làm mới</button>
                         <button id="openGmailBtn" class="btn-secondary">Mở Gmail</button>
                         <button id="gmailLoginBtn" class="btn-primary">Đăng nhập / Đổi tài khoản</button>

@@ -70,11 +70,21 @@ class Config:
     GEMINI_API_KEY = _first_env('GEMINI_API_KEY', 'GOOGLE_API_KEY')
     GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-pro')
 
+    # OpenRouter config - Unified AI API
+    OPENROUTER_API_KEY = _first_env('OPENROUTER_API_KEY', 'OPEN_ROUTER_API_KEY')
+    OPENROUTER_ENABLED = os.getenv('OPENROUTER_ENABLED', 'true').lower() == 'true'
+    OPENROUTER_PRIMARY_MODEL = os.getenv('OPENROUTER_PRIMARY_MODEL', 'openai/gpt-4-turbo')
+    # Danh sách các models để thử lần lượt (comma-separated)
+    OPENROUTER_MODEL_FALLBACK = os.getenv(
+        'OPENROUTER_MODEL_FALLBACK',
+        'openai/gpt-4-turbo,anthropic/claude-3-5-sonnet,mistralai/mistral-large,google/gemini-2.0-pro-exp-02-05'
+    )
+
     # Multi-provider orchestration
-    AI_PRIMARY_PROVIDER = os.getenv('AI_PRIMARY_PROVIDER', 'openai').lower()
+    AI_PRIMARY_PROVIDER = os.getenv('AI_PRIMARY_PROVIDER', 'openrouter').lower()
     AI_PROVIDER_ORDER = os.getenv(
         'AI_PROVIDER_ORDER',
-        'openai,mistral,claude,gemini'
+        'openrouter,openai,mistral,claude,gemini'
     )
     AI_REQUEST_TIMEOUT = int(os.getenv('AI_REQUEST_TIMEOUT', 20))
 

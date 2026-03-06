@@ -63,9 +63,14 @@ class GmailService:
             print(f"Gmail authentication error: {str(e)}")
             return False
     
-    def get_emails(self, max_results=10, query='is:unread'):
-        """Get emails from inbox"""
+    def get_emails(self, max_results=10, query='is:unread', include_read=False):
+        """Get emails from inbox with lazy body loading"""
         try:
+            # If include_read, get all emails in inbox (read + unread)
+            if include_read and query == 'is:unread':
+                query = 'in:inbox'
+            
+            logger.info(f"Fetching emails: max_results={max_results}, query={query}")
             results = self.service.users().messages().list(
                 userId='me',
                 q=query,
@@ -73,16 +78,20 @@ class GmailService:
             ).execute()
             
             messages = results.get('messages', [])
+            logger.info(f"Found {len(messages)} messages matching query: {query}")
+            
             emails = []
             
+            # Serial fetch with lazy body loading (skip body for speed)
             for msg in messages:
-                email_data = self.get_email_details(msg['id'])
+                email_data = self.get_email_details(msg['id'], lazy=True)
                 if email_data:
                     emails.append(email_data)
             
+            logger.info(f"Successfully fetched {len(emails)} email details")
             return emails
         except Exception as e:
-            print(f"Error getting emails: {str(e)}")
+            logger.error(f"Error getting emails: {str(e)}")
             return []
 
     def get_emails_by_date(self, date_str, max_results=20):
@@ -121,13 +130,15 @@ class GmailService:
 
         return None
     
-    def get_email_details(self, message_id):
-        """Get email details"""
+    def get_email_details(self, message_id, lazy=False):
+        """Get email details - lazy=True skips full body for speed"""
         try:
+            # Use 'metadata' format for lazy loading (has headers but no body), 'full' for complete body
+            format_type = 'metadata' if lazy else 'full'
             message = self.service.users().messages().get(
                 userId='me',
                 id=message_id,
-                format='full'
+                format=format_type
             ).execute()
             
             headers = message['payload']['headers']
@@ -136,9 +147,14 @@ class GmailService:
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), '')
+            snippet = message.get('snippet', '')
             
-            # Extract body
-            body = self._get_email_body(message['payload'])
+            # Extract body only if not lazy loading
+            body = "" if lazy else self._get_email_body(message['payload'])
+            
+            # Check if email is unread based on labels
+            label_ids = message.get('labelIds', [])
+            is_unread = 'UNREAD' in label_ids
             
             return {
                 'id': message_id,
@@ -146,7 +162,8 @@ class GmailService:
                 'sender': sender,
                 'date': date,
                 'body': body,
-                'snippet': message['snippet']
+                'snippet': snippet,
+                'is_unread': is_unread
             }
         except Exception as e:
             print(f"Error getting email details: {str(e)}")
@@ -209,6 +226,34 @@ class GmailService:
             return True
         except Exception as e:
             print(f"Error sending email: {str(e)}")
+            return False
+    
+    def mark_as_read(self, message_id):
+        """Mark an email as read"""
+        try:
+            self.service.users().messages().modify(
+                userId='me',
+                id=message_id,
+                body={'removeLabelIds': ['UNREAD']}
+            ).execute()
+            logger.info(f"Marked message {message_id} as read")
+            return True
+        except Exception as e:
+            logger.error(f"Error marking message as read: {str(e)}")
+            return False
+    
+    def mark_as_unread(self, message_id):
+        """Mark an email as unread"""
+        try:
+            self.service.users().messages().modify(
+                userId='me',
+                id=message_id,
+                body={'addLabelIds': ['UNREAD']}
+            ).execute()
+            logger.info(f"Marked message {message_id} as unread")
+            return True
+        except Exception as e:
+            logger.error(f"Error marking message as unread: {str(e)}")
             return False
     
     @staticmethod

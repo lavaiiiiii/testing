@@ -51,6 +51,7 @@ class AIService:
         }
         self.last_provider_used = None
         self.provider_usage = {
+            'openrouter': 0,
             'openai': 0,
             'mistral': 0,
             'claude': 0,
@@ -206,6 +207,10 @@ class AIService:
     def _detect_configured_providers(self):
         configured = []
 
+        # OpenRouter is the primary choice if enabled
+        if Config.OPENROUTER_ENABLED and Config.OPENROUTER_API_KEY:
+            configured.append('openrouter')
+        
         if Config.OPENAI_API_KEY:
             configured.append('openai')
         if Config.MISTRAL_API_KEY:
@@ -302,6 +307,8 @@ class AIService:
         return optimized
 
     def _call_provider(self, provider, messages, max_tokens):
+        if provider == 'openrouter':
+            return self._call_openrouter(messages, max_tokens)
         if provider == 'openai':
             return self._call_openai(messages, max_tokens)
         if provider == 'mistral':
@@ -312,6 +319,64 @@ class AIService:
             return self._call_gemini(messages, max_tokens)
 
         raise ValueError(f"Unsupported provider: {provider}")
+
+    def _call_openrouter(self, messages, max_tokens):
+        """Call OpenRouter API with model fallback support"""
+        if not Config.OPENROUTER_API_KEY:
+            raise ValueError("OpenRouter chưa được cấu hình")
+
+        # Parse available models for fallback
+        models_to_try = [Config.OPENROUTER_PRIMARY_MODEL]
+        if Config.OPENROUTER_MODEL_FALLBACK:
+            fallback_models = [m.strip() for m in Config.OPENROUTER_MODEL_FALLBACK.split(',') if m.strip()]
+            # Add fallback models that weren't already in the primary
+            for model in fallback_models:
+                if model not in models_to_try:
+                    models_to_try.append(model)
+
+        last_error = None
+        
+        for model_name in models_to_try:
+            try:
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
+                        "HTTP-Referer": "http://127.0.0.1:5000",
+                        "X-Title": "TeacherBot",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": model_name,
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                        "temperature": 0.5
+                    },
+                    timeout=self.timeout
+                )
+                
+                # Check for quota/rate limit errors
+                if response.status_code in [429, 401, 403, 402]:
+                    error_data = response.json() if response.text else {}
+                    error_msg = error_data.get('error', {}).get('message', f"HTTP {response.status_code}")
+                    last_error = f"{model_name}: {error_msg}"
+                    print(f"  ⚠️  Model {model_name} - {error_msg[:80]}")
+                    continue  # Try next model
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                content = data['choices'][0]['message']['content']
+                print(f"  ✅ OpenRouter model {model_name} succeeded")
+                return content
+                    
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)[:200]
+                print(f"  ⚠️  Model {model_name} error: {str(e)[:80]}")
+                continue
+        
+        # All models failed
+        raise requests.exceptions.HTTPError(f"OpenRouter: No models available. Last error: {last_error}")
 
     def _call_openai(self, messages, max_tokens):
         if not Config.OPENAI_API_KEY:

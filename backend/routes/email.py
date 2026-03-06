@@ -6,6 +6,7 @@ import json
 import base64
 import requests
 from flask import Blueprint, request, jsonify, redirect, url_for, session
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -28,6 +29,38 @@ email_bp = Blueprint('email', __name__, url_prefix='/api/email')
 # Initialize services
 mistral_service = MistralService()
 ai_service = AIService()
+
+# Simple in-memory cache for email lists (5 minute TTL)
+_email_cache = {}
+
+def _get_cache_key(user_id, filter_type):
+    """Generate cache key"""
+    return f"{user_id}:{filter_type}"
+
+def _are_emails_cached(cache_key):
+    """Check if cache is still valid"""
+    if cache_key not in _email_cache:
+        return False
+    cached_time, _, _ = _email_cache[cache_key]
+    return datetime.now() - cached_time < timedelta(minutes=5)
+
+def _get_cached_emails(cache_key):
+    """Get cached emails if valid"""
+    if _are_emails_cached(cache_key):
+        _, cached_emails, cached_total = _email_cache[cache_key]
+        return cached_emails, cached_total
+    return None, None
+
+def _cache_emails(cache_key, emails, total):
+    """Cache emails with timestamp"""
+    _email_cache[cache_key] = (datetime.now(), emails, total)
+
+def _clear_all_cache(user_id):
+    """Clear all cached emails for a user"""
+    keys_to_delete = [k for k in _email_cache.keys() if k.startswith(f"{user_id}:")]
+    for key in keys_to_delete:
+        del _email_cache[key]
+    logger.info(f"Cleared {len(keys_to_delete)} cache entries for user {user_id}")
 
 
 def _fetch_google_userinfo(creds):
@@ -214,10 +247,9 @@ def oauth_config_check():
 
 @email_bp.route('/get-unread', methods=['GET'])
 def get_unread_emails():
-    """Get unread emails filtered by selected category using AI classifier."""
+    """Get unread emails filtered by selected category with caching and parallel fetching."""
     user_id = get_current_user_id(request, session=session)
-    logger.debug(f"get_unread_emails: user_id resolved to: {user_id}")
-    logger.debug(f"get_unread_emails: session keys: {list(session.keys()) if session else 'No session'}")
+    logger.info(f"get_unread_emails: user_id = {user_id}")
     
     service = _load_gmail_service(user_id)
     if not service:
@@ -233,24 +265,134 @@ def get_unread_emails():
 
     try:
         max_results = request.args.get('max_results', 10, type=int)
+        page = request.args.get('page', 1, type=int)
         filter_type = request.args.get('filter', 'education', type=str).strip().lower()
-
-        # Pull extra rows when applying specific filters to keep enough results
-        fetch_count = max_results if filter_type == 'all' else min(max_results * 4, 80)
-        raw_emails = service.get_emails(max_results=fetch_count, query='is:unread')
-
-        filtered_emails = mistral_service.batch_classify_emails(raw_emails, filter_type=filter_type)
-        filtered_emails = filtered_emails[:max_results]
+        include_read = request.args.get('include_read', 'false', type=str).lower() == 'true'
+        
+        cache_key = _get_cache_key(user_id, filter_type)
+        
+        # Try to get from cache first (only for unread emails)
+        cached_emails, cached_total = _get_cached_emails(cache_key) if not include_read else (None, None)
+        if cached_emails is not None:
+            filtered_emails = cached_emails
+            total_raw = cached_total
+            cache_hit = True
+        else:
+            # Fetch from Gmail with lazy body loading
+            fetch_count = max_results if filter_type == 'all' else min(max_results * 4, 80)
+            raw_emails = service.get_emails(max_results=fetch_count, query='is:unread', include_read=include_read)
+            
+            logger.info(f"Fetched {len(raw_emails)} raw emails from Gmail")
+            
+            # Bypass AI classification for now - just return all emails
+            # TODO: Fix Mistral service if needed
+            if filter_type == 'all' or len(raw_emails) == 0:
+                filtered_emails = raw_emails
+            else:
+                try:
+                    filtered_emails = mistral_service.batch_classify_emails(raw_emails, filter_type=filter_type)
+                    logger.info(f"AI filtered to {len(filtered_emails)} emails")
+                except Exception as e:
+                    logger.warning(f"AI classification failed, returning all: {e}")
+                    filtered_emails = raw_emails
+            
+            total_raw = len(raw_emails)
+            
+            # Cache the results
+            _cache_emails(cache_key, filtered_emails, total_raw)
+            cache_hit = False
+        
+        # Calculate pagination
+        total_emails = len(filtered_emails)
+        total_pages = (total_emails + max_results - 1) // max_results
+        page = max(1, min(page, total_pages)) if total_pages > 0 else 1
+        
+        # Get page emails
+        offset = (page - 1) * max_results
+        page_emails = filtered_emails[offset:offset + max_results]
         
         return jsonify({
             'success': True,
             'filter': filter_type,
-            'emails': filtered_emails,
-            'total_filtered': len(raw_emails),
-            'matched_count': len(filtered_emails)
+            'emails': page_emails,
+            'total_filtered': total_raw,
+            'matched_count': total_emails,
+            'cache_hit': cache_hit,
+            'debug': {
+                'raw_email_count': total_raw,
+                'filtered_email_count': total_emails,
+                'current_page_items': len(page_emails)
+            },
+            'pagination': {
+                'current_page': page,
+                'total_pages': total_pages,
+                'per_page': max_results,
+                'total_items': total_emails
+            }
         })
     except Exception as e:
         logger.error(f"Error in get_unread_emails: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e), 'error_type': type(e).__name__}), 500
+
+
+@email_bp.route('/get-email-body/<email_id>', methods=['GET'])
+def get_email_body(email_id):
+    """Get full email body on-demand (lazy loading for performance)"""
+    user_id = get_current_user_id(request, session=session)
+    service = _load_gmail_service(user_id)
+    if not service:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    try:
+        email_data = service.get_email_details(email_id, lazy=False)
+        if email_data:
+            return jsonify({
+                'success': True,
+                'body': email_data.get('body', '')
+            })
+        return jsonify({'error': 'Email not found'}), 404
+    except Exception as e:
+        logger.error(f"Error getting email body: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@email_bp.route('/mark-as-read/<email_id>', methods=['POST'])
+def mark_email_as_read(email_id):
+    """Mark an email as read"""
+    user_id = get_current_user_id(request, session=session)
+    service = _load_gmail_service(user_id)
+    if not service:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    try:
+        success = service.mark_as_read(email_id)
+        if success:
+            # Clear cache to force refresh
+            _clear_all_cache(user_id)
+            return jsonify({'success': True, 'message': 'Đã đánh dấu đã đọc'})
+        return jsonify({'error': 'Failed to mark as read'}), 500
+    except Exception as e:
+        logger.error(f"Error marking as read: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@email_bp.route('/mark-as-unread/<email_id>', methods=['POST'])
+def mark_email_as_unread(email_id):
+    """Mark an email as unread"""
+    user_id = get_current_user_id(request, session=session)
+    service = _load_gmail_service(user_id)
+    if not service:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    try:
+        success = service.mark_as_unread(email_id)
+        if success:
+            # Clear cache to force refresh
+            _clear_all_cache(user_id)
+            return jsonify({'success': True, 'message': 'Đã đánh dấu chưa đọc'})
+        return jsonify({'error': 'Failed to mark as unread'}), 500
+    except Exception as e:
+        logger.error(f"Error marking as unread: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 

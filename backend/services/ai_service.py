@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DEMO_RESPONSES = {
     "tóm tắt": "Đây là tóm tắt email:\n- Điểm chính 1: Nội dung quan trọng\n- Điểm chính 2: Thông tin cần chú ý\n- Hành động: Cần phản hồi trong 24h",
     "lịch": "Tôi đề xuất lên lịch hẹn vào ngày mai lúc 14:00 để thảo luận chi tiết.",
-    "default": "Xin chào! Tôi là TeacherBot - trợ lý AI cho giáo viên. Tôi có thể giúp bạn với:\n- Soạn tài liệu giáo dục\n- Phân tích email\n- Lên lịch hẹn\n- Và nhiều hơn nữa!\n\n(Hiện đang ở mode Demo - hết quota OpenAI)"
+    "default": "Xin chào! Tôi là AI Agent - trợ lý AI cho giáo viên. Tôi có thể giúp bạn với:\n- Soạn tài liệu giáo dục\n- Phân tích email\n- Lên lịch hẹn\n- Và nhiều hơn nữa!\n\n(Hiện đang ở mode Demo - hết quota OpenAI)"
 }
 
 # Quota/rate limit error keywords
@@ -145,7 +145,6 @@ class AIService:
 
         providers = self._build_provider_chain(task=task)
         last_error = None
-        all_quota_errors = True
 
         for provider in providers:
             # Skip unhealthy providers
@@ -182,7 +181,6 @@ class AIService:
                     print(f"🚫 {provider.upper()} HẾT QUOTA - chuyển sang provider khác")
                     self._mark_provider_failed(provider, error_msg, is_quota_error=True)
                 else:
-                    all_quota_errors = False
                     print(f"⚠️  {provider.upper()} lỗi - thử provider tiếp theo: {error_msg[:100]}")
                     self._mark_provider_failed(provider, error_msg, is_quota_error=False)
 
@@ -296,13 +294,36 @@ class AIService:
             })
 
         recent_non_system = non_system[-self.max_context_messages:] if self.max_context_messages > 0 else non_system
-        per_message_limit = max(200, self.max_input_chars // max(1, len(recent_non_system)))
+        if not recent_non_system:
+            return optimized
 
-        for msg in recent_non_system:
-            optimized.append({
+        # Reserve part of budget for system message, then fill newest messages first.
+        system_budget = min(self.max_system_prompt_chars, self.max_input_chars // 3)
+        available_budget = max(200, self.max_input_chars - system_budget)
+        per_message_limit = max(160, available_budget // max(1, len(recent_non_system)))
+
+        packed_recent = []
+        used_budget = 0
+        # Prioritize newest context by packing from latest to oldest
+        for msg in reversed(recent_non_system):
+            raw_content = msg.get('content', '') or ''
+            remaining = available_budget - used_budget
+            if remaining <= 80:
+                break
+
+            msg_limit = min(per_message_limit, remaining)
+            compact_content = self._truncate_text(raw_content, msg_limit)
+            content_len = len(compact_content)
+            if content_len <= 0:
+                continue
+
+            packed_recent.append({
                 'role': msg.get('role', 'user'),
-                'content': self._truncate_text(msg.get('content', ''), per_message_limit)
+                'content': compact_content
             })
+            used_budget += content_len
+
+        optimized.extend(reversed(packed_recent))
 
         return optimized
 
@@ -343,7 +364,7 @@ class AIService:
                     headers={
                         "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
                         "HTTP-Referer": "http://127.0.0.1:5000",
-                        "X-Title": "TeacherBot",
+                        "X-Title": "AI Agent",
                         "Content-Type": "application/json"
                     },
                     json={

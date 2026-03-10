@@ -1,4 +1,4 @@
-# TeacherBot - AI-Powered Teaching Assistant
+# AI Agent - AI-Powered Teaching Assistant
 
 **Status:** ✅ **FULLY OPTIMIZED & FIXED** (v2.0)
 
@@ -7,6 +7,50 @@ Intelligent assistant for teachers combining AI chat, Gmail integration, schedul
 ---
 
 ## 🚀 Quick Start (5 minutes)
+
+## 🌐 Deploy Public (không cần file .env)
+
+Khi deploy online, bạn **không cần upload file `.env`**. App đọc biến bằng `os.getenv(...)`, nên chỉ cần khai báo Environment Variables trên nền tảng deploy.
+
+### 1) Biến môi trường tối thiểu
+
+```bash
+SECRET_KEY=mot_chuoi_bat_ky_dai_va_kho_doan
+
+# AI (ít nhất 1 provider)
+OPENROUTER_API_KEY=...
+
+# Gmail OAuth (chọn 1 trong 2 cách)
+# Cách A: tách riêng ID + SECRET
+GMAIL_CLIENT_ID=...
+GMAIL_CLIENT_SECRET=...
+
+# Cách B: JSON OAuth nguyên khối (khuyên dùng trên cloud)
+GMAIL_CREDENTIALS_JSON={"web":{...}}
+
+# Callback URL public của bạn
+GMAIL_REDIRECT_URI=https://your-domain/api/email/oauth2callback
+```
+
+### 2) Cấu hình OAuth trên Google Cloud
+
+- Thêm `Authorized redirect URI` đúng URL public:
+  - `https://your-domain/api/email/oauth2callback`
+- Nếu sai redirect URI, đăng nhập Gmail sẽ lỗi dù app đã deploy thành công.
+
+### 3) Cách set biến theo nền tảng
+
+- **Vercel**: Project Settings → Environment Variables → add từng key phía trên.
+- **Render/Railway**: Service Settings → Environment → add key/value.
+
+### 4) Kiểm tra sau deploy
+
+- Mở `https://your-domain/api/status`
+- Kỳ vọng:
+  - `gmail_configured: true`
+  - Có ít nhất một AI provider `true`
+
+> Lưu ý: Serverless (như Vercel) dùng filesystem tạm thời, token/db có thể không bền vững. Nếu cần dữ liệu bền và OAuth ổn định lâu dài, ưu tiên Render/Railway + DB managed.
 
 ### Prerequisites
 - Python 3.7+
@@ -307,8 +351,8 @@ python start.py        # http://localhost:5000
 
 ### Docker
 ```bash
-docker build -t teacherbot .
-docker run -p 5000:5000 -e OPENROUTER_API_KEY=sk-... teacherbot
+docker build -t ai-agent .
+docker run -p 5000:5000 -e OPENROUTER_API_KEY=sk-... ai-agent
 ```
 
 ---
@@ -422,7 +466,7 @@ MIT License - Free for personal and educational use
 - [ ] Tab switching works smoothly
 - [ ] No JavaScript errors in console
 
-**All items checked?** 🎉 You're ready to use TeacherBot!
+**All items checked?** 🎉 You're ready to use AI Agent!
 
 ---
 

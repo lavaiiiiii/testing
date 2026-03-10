@@ -140,7 +140,7 @@ def _get_redirect_uri():
 
 
 def _build_oauth_flow(state=None):
-    """Create OAuth flow from env vars (preferred) or credentials file."""
+    """Create OAuth flow from JSON env, credentials file, then env vars."""
     redirect_uri = _get_redirect_uri()
 
     raw_credentials_json = (Config.GMAIL_CREDENTIALS_JSON or '').strip()
@@ -183,6 +183,14 @@ def _build_oauth_flow(state=None):
             except Exception:
                 continue
 
+    if os.path.exists(Config.GMAIL_CREDENTIALS_FILE):
+        return Flow.from_client_secrets_file(
+            Config.GMAIL_CREDENTIALS_FILE,
+            scopes=GmailService.SCOPES,
+            state=state,
+            redirect_uri=redirect_uri
+        )
+
     client_id = (Config.GMAIL_CLIENT_ID or '').strip()
     client_secret = (Config.GMAIL_CLIENT_SECRET or '').strip()
     if client_id and client_secret:
@@ -198,14 +206,6 @@ def _build_oauth_flow(state=None):
         }
         return Flow.from_client_config(
             client_config,
-            scopes=GmailService.SCOPES,
-            state=state,
-            redirect_uri=redirect_uri
-        )
-
-    if os.path.exists(Config.GMAIL_CREDENTIALS_FILE):
-        return Flow.from_client_secrets_file(
-            Config.GMAIL_CREDENTIALS_FILE,
             scopes=GmailService.SCOPES,
             state=state,
             redirect_uri=redirect_uri
@@ -556,11 +556,19 @@ def oauth2callback():
     """Handle redirect from Google and store credentials."""
     logger.info("OAuth2 callback invoked")
     
-    # Rebuild the Flow using the stored state and client secrets
+    # Rebuild the Flow using state from session (preferred) or callback query fallback
     state = session.pop('oauth_state', None)
     if not state:
+        state = (request.args.get('state') or '').strip()
+        if state:
+            logger.warning("OAuth state missing in session, using callback query state fallback")
+
+    if not state:
         logger.error("OAuth state not found in session")
-        return jsonify({'error': 'flow_not_initialized', 'message': 'OAuth state expired or missing'}), 400
+        return jsonify({
+            'error': 'flow_not_initialized',
+            'message': 'OAuth state expired or missing. Please restart Gmail login.'
+        }), 400
 
     try:
         flow = _build_oauth_flow(state=state)
@@ -651,5 +659,10 @@ def gmail_auth_url():
             session['oauth_code_verifier'] = code_verifier
     except Exception:
         pass
-    return jsonify({'auth_url': auth_url})
+
+    response = jsonify({'auth_url': auth_url})
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
  

@@ -13,7 +13,7 @@ user_bp = Blueprint('user', __name__, url_prefix='/api/user')
 @user_bp.route('/profile', methods=['GET'])
 def get_profile():
     """Get current user profile"""
-    user_id = get_current_user_id(request)
+    user_id = get_current_user_id(request, session=session)
     user = User.get(user_id)
     
     if not user:
@@ -28,7 +28,7 @@ def get_profile():
 @user_bp.route('/profile', methods=['POST'])
 def update_profile():
     """Update user profile"""
-    user_id = get_current_user_id(request)
+    user_id = get_current_user_id(request, session=session)
     data = request.get_json() or {}
     
     # Allow updating name, email, avatar_url
@@ -56,7 +56,7 @@ def update_profile():
 @user_bp.route('/gmail-connected', methods=['POST'])
 def mark_gmail_connected():
     """Mark user Gmail as connected"""
-    user_id = get_current_user_id(request)
+    user_id = get_current_user_id(request, session=session)
     User.update(user_id, gmail_connected=1)
     
     user = User.get(user_id)
@@ -69,7 +69,7 @@ def mark_gmail_connected():
 @user_bp.route('/gmail-disconnected', methods=['POST'])
 def mark_gmail_disconnected():
     """Mark user Gmail as disconnected"""
-    user_id = get_current_user_id(request)
+    user_id = get_current_user_id(request, session=session)
     User.update(user_id, gmail_connected=0)
     
     user = User.get(user_id)

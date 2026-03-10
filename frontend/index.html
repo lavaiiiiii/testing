@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TeacherBot - Trợ lý giáo viên AI</title>
+    <title>AI Agent - Trợ lý giáo viên AI</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h1>TeacherBot</h1>
+                <h1>AI Agent</h1>
                 <p class="subtitle">Trợ lý AI cho giáo viên</p>
                 <div class="user-profile-section">
                     <img id="userAvatar" class="user-avatar" alt="User Avatar" title="Đăng nhập Gmail">
@@ -142,7 +142,13 @@
                 </div>
                 
                 <div class="tab-content" id="upcoming-tab">
-                    <div id="schedulesList" class="schedules-list"></div>
+                    <div class="schedule-week-toolbar">
+                        <button id="prevWeekBtn" class="btn-secondary" type="button">← Tuần trước</button>
+                        <div id="scheduleWeekMeta" class="schedule-week-meta"></div>
+                        <button id="syncCalendarBtn" class="btn-secondary" type="button">🔔 Đồng bộ Google Calendar</button>
+                        <button id="nextWeekBtn" class="btn-secondary" type="button">Tuần sau →</button>
+                    </div>
+                    <div id="scheduleWeekGrid" class="schedule-week-grid"></div>
                 </div>
                 
                 <div class="tab-content" id="new-schedule-tab" style="display: none;">
@@ -158,6 +164,16 @@
                         <div class="form-group">
                             <label>Ngày giờ</label>
                             <input type="datetime-local" id="scheduleTime" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Thời lượng</label>
+                            <select id="scheduleDuration">
+                                <option value="30" selected>30 phút (mặc định)</option>
+                                <option value="45">45 phút</option>
+                                <option value="60">60 phút</option>
+                                <option value="90">90 phút</option>
+                                <option value="120">120 phút</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Người tham dự (email, cách nhau bằng dấu phẩy)</label>
@@ -209,6 +225,16 @@
                     <input type="datetime-local" id="editScheduleTime" required>
                 </div>
                 <div class="form-group">
+                    <label>Thời lượng</label>
+                    <select id="editScheduleDuration">
+                        <option value="30" selected>30 phút (mặc định)</option>
+                        <option value="45">45 phút</option>
+                        <option value="60">60 phút</option>
+                        <option value="90">90 phút</option>
+                        <option value="120">120 phút</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Người tham dự (email, cách nhau bằng dấu phẩy)</label>
                     <input type="text" id="editScheduleAttendees" placeholder="email1@example.com, email2@example.com">
                 </div>
@@ -217,6 +243,20 @@
                     <button type="button" class="btn-secondary" onclick="document.getElementById('editScheduleModal').style.display='none'">Hủy</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Schedule Detail Modal -->
+    <div id="scheduleDetailModal" class="modal">
+        <div class="modal-content">
+            <span class="close" data-modal="scheduleDetailModal">&times;</span>
+            <h2>Chi tiết lịch hẹn</h2>
+            <div id="scheduleDetailContent"></div>
+            <div class="modal-actions">
+                <button id="scheduleDetailToggleBtn" class="btn-secondary" type="button">✓ Hoàn thành</button>
+                <button id="scheduleDetailEditBtn" class="btn-secondary" type="button">✏️ Sửa</button>
+                <button id="scheduleDetailDeleteBtn" class="btn-primary" type="button">🗑️ Xóa</button>
+            </div>
         </div>
     </div>
     

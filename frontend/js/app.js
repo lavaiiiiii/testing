@@ -12,6 +12,7 @@ const closeModal = document.querySelector('.close');
 const clearBtn = document.getElementById('clearBtn');
 const composeForm = document.getElementById('composeForm');
 const scheduleForm = document.getElementById('scheduleForm');
+const scheduleDetailModal = document.getElementById('scheduleDetailModal');
 const gmailLoginBtn = document.getElementById('gmailLoginBtn');
 const gmailLogoutBtn = document.getElementById('gmailLogoutBtn');
 const gmailAccountBadge = document.getElementById('gmailAccountBadge');
@@ -25,6 +26,9 @@ const emailFilterSelect = document.getElementById('emailFilterSelect');
 // State
 let currentPage = 'chat';
 let currentEmailPage = 1;
+let currentWeekOffset = 0;
+let currentScheduleDetail = null;
+let latestSchedules = [];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', initApp);
@@ -167,6 +171,51 @@ function setupEventListeners() {
         const closeBtn = editModal.querySelector('.close');
         if (closeBtn) closeBtn.addEventListener('click', () => editModal.style.display = 'none');
     }
+
+    if (scheduleDetailModal) {
+        const detailCloseBtn = scheduleDetailModal.querySelector('.close');
+        if (detailCloseBtn) detailCloseBtn.addEventListener('click', closeScheduleDetailModal);
+        scheduleDetailModal.addEventListener('click', (e) => {
+            if (e.target === scheduleDetailModal) closeScheduleDetailModal();
+        });
+    }
+
+    const scheduleDetailToggleBtn = document.getElementById('scheduleDetailToggleBtn');
+    if (scheduleDetailToggleBtn) {
+        scheduleDetailToggleBtn.addEventListener('click', async () => {
+            if (!currentScheduleDetail) return;
+            if (currentScheduleDetail.status === 'completed') {
+                await markScheduleIncomplete(currentScheduleDetail.id);
+                currentScheduleDetail.status = 'pending';
+            } else {
+                await markScheduleComplete(currentScheduleDetail.id);
+                currentScheduleDetail.status = 'completed';
+            }
+            closeScheduleDetailModal();
+        });
+    }
+
+    const scheduleDetailEditBtn = document.getElementById('scheduleDetailEditBtn');
+    if (scheduleDetailEditBtn) {
+        scheduleDetailEditBtn.addEventListener('click', async () => {
+            if (!currentScheduleDetail) return;
+            const scheduleToEdit = { ...currentScheduleDetail };
+            if (!scheduleToEdit.id && scheduleDetailModal?.dataset?.scheduleId) {
+                scheduleToEdit.id = Number(scheduleDetailModal.dataset.scheduleId);
+            }
+            closeScheduleDetailModal();
+            await openEditSchedule(scheduleToEdit);
+        });
+    }
+
+    const scheduleDetailDeleteBtn = document.getElementById('scheduleDetailDeleteBtn');
+    if (scheduleDetailDeleteBtn) {
+        scheduleDetailDeleteBtn.addEventListener('click', async () => {
+            if (!currentScheduleDetail) return;
+            await deleteSchedule(currentScheduleDetail.id);
+            closeScheduleDetailModal();
+        });
+    }
     
     // Clear history
     if (clearBtn) {
@@ -207,6 +256,27 @@ function setupEventListeners() {
             loadEmails();
         });
     }
+
+    const prevWeekBtn = document.getElementById('prevWeekBtn');
+    if (prevWeekBtn) {
+        prevWeekBtn.addEventListener('click', () => {
+            currentWeekOffset -= 1;
+            loadSchedules();
+        });
+    }
+
+    const nextWeekBtn = document.getElementById('nextWeekBtn');
+    if (nextWeekBtn) {
+        nextWeekBtn.addEventListener('click', () => {
+            currentWeekOffset += 1;
+            loadSchedules();
+        });
+    }
+
+    const syncCalendarBtn = document.getElementById('syncCalendarBtn');
+    if (syncCalendarBtn) {
+        syncCalendarBtn.addEventListener('click', syncSchedulesToCalendar);
+    }
     
     // Generate report
     const reportBtn = document.getElementById('generateReportBtn');
@@ -230,6 +300,10 @@ async function refreshAuthButtons() {
         const profileEmail = (data && data.gmail_email) ? data.gmail_email : '';
         const profilePicture = (data && data.gmail_picture) ? data.gmail_picture : '';
 
+        const sidebarUserName = document.getElementById('userName');
+        const sidebarGmailStatus = document.getElementById('gmailStatus');
+        const sidebarAvatar = document.getElementById('userAvatar');
+
         if (gmailAccountBadge) {
             gmailAccountBadge.textContent = isAuth ? 'Đã kết nối Gmail' : 'Chưa đăng nhập Gmail';
             gmailAccountBadge.style.display = isAuth ? 'none' : 'inline-block';
@@ -239,11 +313,46 @@ async function refreshAuthButtons() {
         if (gmailName) gmailName.textContent = profileName;
         if (gmailEmail) gmailEmail.textContent = profileEmail;
         if (gmailAvatar) gmailAvatar.src = profilePicture || 'https://www.gravatar.com/avatar/?d=mp&s=64';
+
+        if (sidebarUserName) {
+            sidebarUserName.textContent = isAuth
+                ? `${profileName}${profileEmail ? ` (${profileEmail})` : ''}`
+                : 'Teacher';
+        }
+
+        if (sidebarGmailStatus) {
+            sidebarGmailStatus.textContent = isAuth ? 'Đã kết nối Gmail' : 'Chưa kết nối Gmail';
+        }
+
+        if (sidebarAvatar) {
+            if (isAuth && profilePicture) {
+                sidebarAvatar.src = profilePicture;
+                sidebarAvatar.textContent = '';
+            } else {
+                const fallbackSource = isAuth ? (profileName || profileEmail || 'U') : 'Teacher';
+                const initials = fallbackSource.substring(0, 1).toUpperCase();
+                sidebarAvatar.src = '';
+                sidebarAvatar.style.backgroundColor = '#4F46E5';
+                sidebarAvatar.style.display = 'flex';
+                sidebarAvatar.style.alignItems = 'center';
+                sidebarAvatar.style.justifyContent = 'center';
+                sidebarAvatar.style.fontSize = '20px';
+                sidebarAvatar.style.fontWeight = 'bold';
+                sidebarAvatar.style.color = 'white';
+                sidebarAvatar.textContent = initials;
+            }
+            sidebarAvatar.title = isAuth ? 'Tài khoản Gmail đã kết nối' : 'Click để đăng nhập Gmail';
+        }
     } catch (err) {
         console.error('Auth status check failed:', err);
         if (gmailLoginBtn) gmailLoginBtn.style.display = 'inline-block';
         if (gmailLogoutBtn) gmailLogoutBtn.style.display = 'none';
         if (openGmailBtn) openGmailBtn.style.display = 'none';
+
+        const sidebarGmailStatus = document.getElementById('gmailStatus');
+        if (sidebarGmailStatus) {
+            sidebarGmailStatus.textContent = 'Chưa kết nối Gmail';
+        }
     }
 }
 
@@ -393,6 +502,10 @@ async function sendMessage() {
                 </span>` : '';
             
             addMessage(data.response, 'assistant', providerBadge);
+
+            if (data.command_effect) {
+                await applyCommandEffect(data.command_effect);
+            }
             
             if (data.demo_mode) {
                 showNotification('⚠️ Demo Mode - Tất cả AI providers đang cooldown', 'info');
@@ -425,6 +538,30 @@ Endpoint: ${API_BASE}/chat/message
 Status: Not reached
         `.trim();
         console.error(errorMsg);
+    }
+}
+
+async function applyCommandEffect(effect) {
+    if (!effect) return;
+
+    const targetPage = effect.target_page;
+    if (targetPage) {
+        const navBtn = document.querySelector(`[data-page="${targetPage}"]`);
+        if (navBtn) handlePageChange(navBtn);
+    }
+
+    const refreshList = Array.isArray(effect.refresh) ? effect.refresh : [];
+    if (refreshList.includes('email')) {
+        await loadEmails(currentEmailPage || 1);
+    }
+    if (refreshList.includes('schedule')) {
+        await loadSchedules();
+    }
+    if (refreshList.includes('history')) {
+        await loadActivityHistory();
+    }
+    if (refreshList.includes('chat')) {
+        await loadChatHistory();
     }
 }
 
@@ -509,7 +646,7 @@ async function clearConversation() {
 // EMAIL FUNCTIONS
 async function gmailLogin() {
     try {
-        const response = await apiFetch(`${API_BASE}/email/auth_url`);
+        const response = await apiFetch(`${API_BASE}/email/auth_url`, { cache: 'no-store' });
         const data = await response.json();
 
         if (!response.ok || !data.auth_url) {
@@ -745,45 +882,215 @@ async function showEmailDetail(email) {
 
 // SCHEDULE FUNCTIONS
 async function loadSchedules() {
-    const schedulesList = document.getElementById('schedulesList');
-    if (!schedulesList) return;
+    const weekGrid = document.getElementById('scheduleWeekGrid');
+    const weekMeta = document.getElementById('scheduleWeekMeta');
+    if (!weekGrid || !weekMeta) return;
     
     try {
-        const response = await apiFetch(`${API_BASE}/schedule/upcoming`);
+        const response = await apiFetch(`${API_BASE}/schedule/list`);
         const data = await response.json();
-        
-        if (data.success && data.schedules.length > 0) {
-            schedulesList.innerHTML = '';
-            data.schedules.forEach(schedule => {
-                const scheduleDiv = document.createElement('div');
-                scheduleDiv.className = 'schedule-item';
-                const startTime = new Date(schedule.start_time).toLocaleString('vi-VN');
-                const statusClass = schedule.status === 'completed' ? 'completed' : 'pending';
-                const statusText = schedule.status === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành';
-                
-                scheduleDiv.innerHTML = `
-                    <div class="schedule-item-info">
-                        <div class="schedule-item-title">${escapeHtml(schedule.title)}</div>
-                        <span class="schedule-item-status ${statusClass}">${statusText}</span>
-                        <div class="schedule-item-time">${startTime}</div>
-                    </div>
-                    <div class="schedule-item-actions">
-                        ${schedule.status === 'completed' ? 
-                            `<button class="btn-check" onclick="markScheduleIncomplete(${schedule.id})">↩️ Chưa xong</button>` :
-                            `<button class="btn-check" onclick="markScheduleComplete(${schedule.id})">✓ Hoàn thành</button>`
-                        }
-                        <button class="btn-edit" onclick="openEditSchedule(${schedule.id})">✏️ Sửa</button>
-                        <button class="btn-delete" onclick="deleteSchedule(${schedule.id})">🗑️ Xóa</button>
-                    </div>
-                `;
-                schedulesList.appendChild(scheduleDiv);
-            });
-        } else {
-            schedulesList.innerHTML = '<p>Không có lịch hẹn sắp tới</p>';
+
+        const schedules = data.success && Array.isArray(data.schedules) ? data.schedules : [];
+        latestSchedules = schedules;
+        const now = new Date();
+        const baseDate = new Date(now);
+        baseDate.setDate(now.getDate() + (currentWeekOffset * 7));
+        const currentDay = now.getDay();
+        const baseDay = baseDate.getDay();
+        const mondayOffset = baseDay === 0 ? -6 : 1 - baseDay;
+        const weekStart = new Date(baseDate);
+        weekStart.setHours(0, 0, 0, 0);
+        weekStart.setDate(baseDate.getDate() + mondayOffset);
+
+        const weekDates = [];
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(weekStart);
+            date.setDate(weekStart.getDate() + i);
+            weekDates.push(date);
         }
+
+        const weekEnd = new Date(weekDates[6]);
+        const weekEndLimit = new Date(weekEnd);
+        weekEndLimit.setHours(23, 59, 59, 999);
+        weekMeta.textContent = `Tuần: ${weekStart.toLocaleDateString('vi-VN')} - ${weekEnd.toLocaleDateString('vi-VN')}`;
+        weekGrid.innerHTML = '';
+
+        const dayNames = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+
+        const weekSchedules = schedules
+            .filter((item) => {
+                const itemDate = new Date(item.start_time);
+                return itemDate >= weekStart && itemDate <= weekEndLimit;
+            })
+            .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+        const outOfRangeHours = new Set();
+        weekSchedules.forEach((item) => {
+            const itemDate = new Date(item.start_time);
+            const hour = itemDate.getHours();
+            if (hour < 7 || hour > 20) {
+                outOfRangeHours.add(hour);
+            }
+        });
+
+        const defaultHours = Array.from({ length: 14 }, (_, idx) => idx + 7); // 07:00 -> 20:00
+        const extraHours = Array.from(outOfRangeHours)
+            .filter((hour) => !defaultHours.includes(hour))
+            .sort((a, b) => a - b);
+        const displayHours = [...defaultHours, ...extraHours].sort((a, b) => a - b);
+
+        const scheduleMap = new Map();
+        weekSchedules.forEach((item) => {
+            const itemDate = new Date(item.start_time);
+            const jsDay = itemDate.getDay();
+            const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+            const hour = itemDate.getHours();
+            const key = `${dayIndex}-${hour}`;
+            if (!scheduleMap.has(key)) {
+                scheduleMap.set(key, []);
+            }
+            scheduleMap.get(key).push(item);
+        });
+
+        weekGrid.innerHTML = '';
+
+        const corner = document.createElement('div');
+        corner.className = 'time-grid-corner';
+        weekGrid.appendChild(corner);
+
+        dayNames.forEach((dayName) => {
+            const header = document.createElement('div');
+            header.className = 'time-grid-day-header';
+            header.textContent = dayName;
+            weekGrid.appendChild(header);
+        });
+
+        displayHours.forEach((hour) => {
+            const hourLabel = document.createElement('div');
+            hourLabel.className = 'time-grid-time-label';
+            hourLabel.textContent = `${String(hour).padStart(2, '0')}:00`;
+            weekGrid.appendChild(hourLabel);
+
+            for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+                const cell = document.createElement('div');
+                cell.className = 'time-grid-cell';
+
+                const cellSchedules = scheduleMap.get(`${dayIndex}-${hour}`) || [];
+                cellSchedules.forEach((schedule) => {
+                    const note = document.createElement('div');
+                    const statusClass = schedule.status === 'completed' ? 'completed' : 'pending';
+                    const timeLabel = new Date(schedule.start_time).toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+
+                    note.className = `schedule-note ${statusClass}`;
+                    note.innerHTML = `
+                        <div class="schedule-note-title">${escapeHtml(schedule.title || 'Lịch hẹn')}</div>
+                        <div class="schedule-note-time">${timeLabel}</div>
+                    `;
+                    note.addEventListener('click', () => openScheduleDetail(schedule));
+                    cell.appendChild(note);
+                });
+
+                weekGrid.appendChild(cell);
+            }
+        });
     } catch (error) {
-        schedulesList.innerHTML = `<p>❌ Lỗi: ${error.message}</p>`;
+        weekGrid.innerHTML = `<p>❌ Lỗi: ${error.message}</p>`;
+        weekMeta.textContent = '';
     }
+}
+
+function openScheduleDetail(schedule) {
+    const content = document.getElementById('scheduleDetailContent');
+    if (!content || !scheduleDetailModal) return;
+    currentScheduleDetail = { ...schedule };
+    scheduleDetailModal.dataset.scheduleId = String(schedule.id || '');
+
+    const startLabel = formatScheduleDateTime(schedule.start_time);
+    const durationMinutes = computeDurationMinutes(schedule);
+    const statusLabel = schedule.status === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành';
+    const attendees = schedule.attendees || 'Không có';
+    const shortDescription = simplifyReminderDescription(schedule.description, schedule.title);
+    const toggleBtn = document.getElementById('scheduleDetailToggleBtn');
+    if (toggleBtn) {
+        toggleBtn.textContent = schedule.status === 'completed' ? '↩️ Đánh dấu chưa hoàn thành' : '✓ Đánh dấu hoàn thành';
+    }
+
+    content.innerHTML = `
+        <div><strong>Tiêu đề:</strong> ${escapeHtml(schedule.title || '')}</div>
+        <div><strong>Thời gian:</strong> ${escapeHtml(startLabel)}</div>
+        <div><strong>Thời lượng:</strong> ${escapeHtml(String(durationMinutes))} phút</div>
+        <div><strong>Trạng thái:</strong> ${escapeHtml(statusLabel)}</div>
+        <div><strong>Người tham dự:</strong> ${escapeHtml(attendees)}</div>
+        <div><strong>Mô tả:</strong><br>${escapeHtml(shortDescription)}</div>
+    `;
+
+    scheduleDetailModal.classList.add('show');
+}
+
+function closeScheduleDetailModal() {
+    if (!scheduleDetailModal) return;
+    scheduleDetailModal.classList.remove('show');
+    currentScheduleDetail = null;
+}
+
+function formatScheduleDateTime(value) {
+    if (!value) return 'N/A';
+    const dateObj = new Date(value);
+    if (Number.isNaN(dateObj.getTime())) return 'N/A';
+
+    const time = dateObj.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const date = dateObj.toLocaleDateString('vi-VN');
+    return `${time}, ${date}`;
+}
+
+function computeDurationMinutes(schedule) {
+    const start = new Date(schedule.start_time);
+    const end = new Date(schedule.end_time);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+        return Math.round((end - start) / 60000);
+    }
+    return 30;
+}
+
+function toDateTimeLocalValue(value) {
+    if (!value) return '';
+    const dateObj = new Date(value);
+    if (Number.isNaN(dateObj.getTime())) {
+        return String(value).slice(0, 16);
+    }
+
+    const pad = (num) => String(num).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    const month = pad(dateObj.getMonth() + 1);
+    const day = pad(dateObj.getDate());
+    const hour = pad(dateObj.getHours());
+    const minute = pad(dateObj.getMinutes());
+    return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function simplifyReminderDescription(description, title) {
+    const raw = (description || '').toString().replace(/\s+/g, ' ').trim();
+    if (!raw) {
+        return `Nhắc bản thân: ${title || 'Lịch hẹn'}`;
+    }
+
+    const cleaned = raw
+        .replace(/Dưới đây là nội dung email để tạo lịch hẹn\.?/gi, '')
+        .replace(/Thân gửi.*$/gi, '')
+        .replace(/Trân trọng.*$/gi, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const shortText = cleaned || raw;
+    if (shortText.length <= 160) return shortText;
+    return `${shortText.slice(0, 157).trim()}...`;
 }
 
 async function markScheduleComplete(scheduleId) {
@@ -828,20 +1135,49 @@ async function markScheduleIncomplete(scheduleId) {
 
 async function openEditSchedule(scheduleId) {
     try {
-        const response = await apiFetch(`${API_BASE}/schedule/list`);
-        const data = await response.json();
-        
-        if (!data.success) throw new Error('Lỗi lấy dữ liệu');
-        
-        const schedule = data.schedules.find(s => s.id === scheduleId);
+        let schedule = null;
+        let normalizedId = null;
+        if (typeof scheduleId === 'object' && scheduleId !== null) {
+            normalizedId = Number(scheduleId.id || 0);
+            if (scheduleId.start_time || scheduleId.title || scheduleId.description) {
+                schedule = scheduleId;
+            }
+        } else {
+            normalizedId = Number(scheduleId || 0);
+        }
+
+        if (!normalizedId && scheduleDetailModal?.dataset?.scheduleId) {
+            normalizedId = Number(scheduleDetailModal.dataset.scheduleId || 0);
+        }
+
+        if (!schedule && normalizedId) {
+            schedule = latestSchedules.find(s => Number(s.id) === normalizedId);
+            if (!schedule && currentScheduleDetail && Number(currentScheduleDetail.id) === normalizedId) {
+                schedule = currentScheduleDetail;
+            }
+            if (!schedule) {
+                const response = await apiFetch(`${API_BASE}/schedule/list`);
+                const data = await response.json();
+                if (!data.success) throw new Error('Lỗi lấy dữ liệu');
+                latestSchedules = Array.isArray(data.schedules) ? data.schedules : [];
+                schedule = latestSchedules.find(s => Number(s.id) === normalizedId);
+            }
+        }
+
         if (!schedule) throw new Error('Lịch hẹn không tìm thấy');
         
         const editForm = document.getElementById('editScheduleForm');
         document.getElementById('editScheduleTitle').value = schedule.title;
         document.getElementById('editScheduleDesc').value = schedule.description || '';
-        document.getElementById('editScheduleTime').value = schedule.start_time;
+        document.getElementById('editScheduleTime').value = toDateTimeLocalValue(schedule.start_time);
+        const editDurationSelect = document.getElementById('editScheduleDuration');
+        if (editDurationSelect) {
+            const durationValue = String(computeDurationMinutes(schedule));
+            const hasOption = Array.from(editDurationSelect.options).some(opt => opt.value === durationValue);
+            editDurationSelect.value = hasOption ? durationValue : '30';
+        }
         document.getElementById('editScheduleAttendees').value = schedule.attendees || '';
-        editForm.dataset.scheduleId = scheduleId;
+        editForm.dataset.scheduleId = String(schedule.id);
         
         document.getElementById('editScheduleModal').style.display = 'block';
     } catch (error) {
@@ -852,18 +1188,28 @@ async function openEditSchedule(scheduleId) {
 async function handleEditScheduleSubmit(e) {
     e.preventDefault();
     
-    const scheduleId = document.getElementById('editScheduleForm').dataset.scheduleId;
+    const scheduleId = Number(document.getElementById('editScheduleForm').dataset.scheduleId);
+    if (!scheduleId) {
+        showNotification('❌ Không xác định được lịch hẹn để sửa', 'error');
+        return;
+    }
     const title = document.getElementById('editScheduleTitle').value.trim();
     const description = document.getElementById('editScheduleDesc').value.trim();
     const start_time = document.getElementById('editScheduleTime').value;
+    const editDurationSelect = document.getElementById('editScheduleDuration');
+    const duration_minutes = parseInt((editDurationSelect && editDurationSelect.value) || '30', 10);
     const attendees_str = document.getElementById('editScheduleAttendees').value.trim();
     const attendees = attendees_str ? attendees_str.split(',').map(e => e.trim()) : [];
+    let timeoutId = null;
     
     try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 15000);
         const response = await apiFetch(`${API_BASE}/schedule/${scheduleId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description, start_time, attendees })
+            signal: controller.signal,
+            body: JSON.stringify({ title, description, start_time, duration_minutes, attendees })
         });
         
         const data = await response.json();
@@ -871,9 +1217,17 @@ async function handleEditScheduleSubmit(e) {
             showNotification('✓ Đã cập nhật lịch hẹn', 'success');
             document.getElementById('editScheduleModal').style.display = 'none';
             await loadSchedules();
+        } else {
+            showNotification('❌ ' + (data.error || 'Không thể cập nhật lịch hẹn'), 'error');
         }
     } catch (error) {
+        if (error.name === 'AbortError') {
+            showNotification('❌ Lưu lịch bị quá thời gian chờ. Vui lòng thử lại.', 'error');
+            return;
+        }
         showNotification('❌ Lỗi: ' + error.message, 'error');
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
     }
 }
 
@@ -902,6 +1256,7 @@ async function handleScheduleSubmit(e) {
     const title = document.getElementById('scheduleTitle').value.trim();
     const description = document.getElementById('scheduleDesc').value.trim();
     const start_time = document.getElementById('scheduleTime').value;
+    const duration_minutes = parseInt(document.getElementById('scheduleDuration').value || '30', 10);
     const attendees_str = document.getElementById('scheduleAttendees').value.trim();
     const attendees = attendees_str ? attendees_str.split(',').map(e => e.trim()) : [];
     
@@ -909,7 +1264,7 @@ async function handleScheduleSubmit(e) {
         const response = await apiFetch(`${API_BASE}/schedule/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description, start_time, attendees })
+            body: JSON.stringify({ title, description, start_time, duration_minutes, attendees })
         });
         
         const data = await response.json();
@@ -917,9 +1272,44 @@ async function handleScheduleSubmit(e) {
             showNotification('✅ Lịch hẹn đã được tạo', 'success');
             scheduleForm.reset();
             await loadSchedules();
+        } else {
+            showNotification('❌ ' + (data.error || 'Không thể tạo lịch hẹn'), 'error');
         }
     } catch (error) {
         showNotification('❌ Lỗi: ' + error.message, 'error');
+    }
+}
+
+async function syncSchedulesToCalendar() {
+    const syncBtn = document.getElementById('syncCalendarBtn');
+    const originalText = syncBtn ? syncBtn.textContent : '';
+
+    try {
+        if (syncBtn) {
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Đang đồng bộ...';
+        }
+
+        const response = await apiFetch(`${API_BASE}/schedule/sync-calendar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`✅ Đồng bộ thành công: ${data.synced}/${data.total} lịch hẹn`, 'success');
+            await loadSchedules();
+            return;
+        }
+
+        showNotification('❌ ' + (data.error || 'Không thể đồng bộ Google Calendar'), 'error');
+    } catch (error) {
+        showNotification('❌ Lỗi đồng bộ: ' + error.message, 'error');
+    } finally {
+        if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.textContent = originalText || '🔔 Đồng bộ Google Calendar';
+        }
     }
 }
 

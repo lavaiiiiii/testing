@@ -24,11 +24,18 @@ class Schedule:
                 end_time DATETIME,
                 attendees TEXT,
                 email_body TEXT,
+                google_event_id TEXT,
                 status TEXT DEFAULT 'pending',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        cursor.execute("PRAGMA table_info(schedules)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if 'google_event_id' not in existing_columns:
+            cursor.execute("ALTER TABLE schedules ADD COLUMN google_event_id TEXT")
+
         conn.commit()
         conn.close()
     
@@ -40,8 +47,8 @@ class Schedule:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO schedules (title, description, start_time, end_time, attendees, email_body, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            INSERT INTO schedules (title, description, start_time, end_time, attendees, email_body, google_event_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, 'pending')
         ''', (title, description, start_time, end_time, attendees, email_body))
         conn.commit()
         schedule_id = cursor.lastrowid
@@ -97,7 +104,7 @@ class Schedule:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        allowed_fields = ['title', 'description', 'start_time', 'end_time', 'attendees', 'email_body', 'status']
+        allowed_fields = ['title', 'description', 'start_time', 'end_time', 'attendees', 'email_body', 'status', 'google_event_id']
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         
         if not updates:

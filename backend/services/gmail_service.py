@@ -8,9 +8,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google.auth.transport.requests import Request
-from google.oauth2.service_account import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.exceptions import GoogleAuthError
 from googleapiclient.discovery import build
 from config import Config
 
@@ -20,8 +18,9 @@ logger = logging.getLogger(__name__)
 class GmailService:
     # require both read and send permissions for our features
     SCOPES = [
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.send'
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/calendar.events'
     ]
     
     def __init__(self, token_file=None):

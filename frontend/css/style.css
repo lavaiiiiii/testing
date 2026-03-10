@@ -589,6 +589,144 @@ body {
     background-color: #FECACA;
 }
 
+.schedule-week-meta {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.schedule-week-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.schedule-week-grid {
+    display: grid;
+    grid-template-columns: 78px repeat(7, minmax(120px, 1fr));
+    gap: 6px;
+    align-items: stretch;
+    overflow-x: auto;
+}
+
+.time-grid-corner {
+    background: #F8FAFC;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    min-height: 38px;
+}
+
+.time-grid-day-header {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    background: #F8FAFC;
+    text-align: center;
+}
+
+.time-grid-time-label {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #F8FAFC;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 8px;
+    min-height: 78px;
+}
+
+.time-grid-cell {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-white);
+    min-height: 78px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.week-day-column {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.week-day-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    font-weight: 600;
+    background: #F8FAFC;
+}
+
+.week-day-column + .week-day-column {
+    box-shadow: inset 3px 0 0 #F1F5F9;
+}
+
+.week-day-notes {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.schedule-note {
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-left: 4px solid transparent;
+}
+
+.schedule-note-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.schedule-note-time {
+    font-size: 12px;
+    margin-top: 4px;
+    color: var(--text-secondary);
+}
+
+.schedule-note.pending {
+    background: #FEF3C7;
+    border-left-color: #F59E0B;
+}
+
+.schedule-note.completed {
+    background: #D1FAE5;
+    border-left-color: #10B981;
+}
+
+.week-day-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+#scheduleDetailContent {
+    margin-top: 8px;
+    line-height: 1.7;
+    color: var(--text-primary);
+}
+
 .email-item-header {
     display: flex;
     justify-content: space-between;
@@ -776,6 +914,14 @@ body {
     .message-content {
         max-width: 85%;
     }
+
+    .schedule-week-grid {
+        min-width: 980px;
+    }
+
+    .schedule-week-toolbar {
+        flex-wrap: wrap;
+    }
 }
 
 @media (max-width: 600px) {
@@ -803,6 +949,10 @@ body {
     
     .message-content {
         max-width: 90%;
+    }
+
+    .schedule-week-grid {
+        min-width: 900px;
     }
 }
 
